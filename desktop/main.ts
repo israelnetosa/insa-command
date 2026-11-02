@@ -5,7 +5,7 @@
 import { app, BrowserWindow, protocol, ipcMain, safeStorage, shell, Menu, dialog, Notification } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import { join, extname, normalize } from 'node:path';
-import { readFile, writeFile, mkdir, copyFile } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, copyFile, readdir, stat } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
 import worker from '../src/index';
 import { LocalD1 } from './d1';
@@ -154,6 +154,24 @@ function wireIpc(lock: ReturnType<typeof createLock>) {
     return true;
   });
   ipcMain.handle('insa:lock', () => { lock.lock(); return true; });
+  // Arquivo de migração na pasta Downloads (o mais recente). Só lê arquivos com o nome do formato.
+  ipcMain.handle('insa:migracao:procurar', async () => {
+    guard();
+    // Downloads do sistema, ~/Downloads e a pasta de dados do app (nessa ordem de preferência por data)
+    const pastas = [...new Set([app.getPath('downloads'), join(app.getPath('home'), 'Downloads'), dataDir()])];
+    try {
+      const achados: { dir: string; n: string; t: number }[] = [];
+      for (const dir of pastas) {
+        const nomes = await readdir(dir).catch(() => [] as string[]);
+        for (const n of nomes.filter(n => /^insa-migracao-[\w-]+\.json$/i.test(n))) achados.push({ dir, n, t: (await stat(join(dir, n))).mtimeMs });
+      }
+      if (!achados.length) return null;
+      const { dir, n: maisNovo } = achados.sort((a, b) => b.t - a.t)[0];
+      const txt = await readFile(join(dir, maisNovo), 'utf8');
+      if (txt.length > 2_000_000) return null;
+      return { nome: maisNovo, conteudo: JSON.parse(txt) };
+    } catch { return null; }
+  });
 }
 
 function createWindow() {
@@ -168,6 +186,16 @@ function createWindow() {
     },
   });
   win.once('ready-to-show', () => win?.show());
+  // Se a janela travar ou o processo de desenho cair, recarrega sozinho (os dados ficam no banco local)
+  let travas = 0;
+  win.webContents.on('render-process-gone', (_e, d) => { if (d.reason !== 'clean-exit' && travas++ < 5) setTimeout(() => win?.webContents.reload(), 500); });
+  let semResposta = false;
+  win.webContents.on('unresponsive', () => { semResposta = true; setTimeout(() => { if (semResposta && win && !win.isDestroyed() && travas++ < 5) win.webContents.forcefullyCrashRenderer(); }, 8000); });
+  win.webContents.on('responsive', () => { semResposta = false; });
+  win.on('show', () => win?.webContents.send('insa:visivel', true));
+  win.on('hide', () => win?.webContents.send('insa:visivel', false));
+  win.on('minimize', () => win?.webContents.send('insa:visivel', false));
+  win.on('restore', () => win?.webContents.send('insa:visivel', true));
   // Nunca navegar para fora do app; links externos abrem no navegador padrão
   win.webContents.on('will-navigate', (e, url) => { if (!url.startsWith(ORIGIN)) { e.preventDefault(); if (url.startsWith('https://')) shell.openExternal(url); } });
   win.webContents.setWindowOpenHandler(({ url }) => { if (url.startsWith('https://')) shell.openExternal(url); return { action: 'deny' }; });

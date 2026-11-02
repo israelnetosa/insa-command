@@ -168,7 +168,8 @@ setInterval(tick, 1000);
 function reator(t, m) {
   const C = 200, arc = (r, v, cor, w = 9) => { const c = 2 * Math.PI * r, f = Math.max(0, Math.min(100, v)) / 100;
     return `<circle cx="${C}" cy="${C}" r="${r}" fill="none" stroke="rgba(72,229,255,.1)" stroke-width="${w}"/>
-      <circle cx="${C}" cy="${C}" r="${r}" fill="none" stroke="${cor}" stroke-width="${w}" stroke-dasharray="${(c * f).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 ${C} ${C})" style="filter:drop-shadow(0 0 6px ${cor})"/>`; };
+      <circle cx="${C}" cy="${C}" r="${r}" fill="none" stroke="${cor}" stroke-opacity=".22" stroke-width="${w + 8}" stroke-dasharray="${(c * f).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 ${C} ${C})"/>
+      <circle cx="${C}" cy="${C}" r="${r}" fill="none" stroke="${cor}" stroke-width="${w}" stroke-dasharray="${(c * f).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 ${C} ${C})"/>`; };
   const ticks = Array.from({ length: 120 }, (_, i) => { const a = i * 3 * Math.PI / 180, l = i % 10 === 0 ? 12 : i % 5 === 0 ? 7 : 4, r1 = 192, r2 = r1 - l;
     return `<line x1="${(C + r1 * Math.sin(a)).toFixed(1)}" y1="${(C - r1 * Math.cos(a)).toFixed(1)}" x2="${(C + r2 * Math.sin(a)).toFixed(1)}" y2="${(C - r2 * Math.cos(a)).toFixed(1)}" stroke="${i % 30 === 0 ? '#ffb347' : 'rgba(72,229,255,.5)'}" stroke-width="${i % 10 === 0 ? 1.6 : 1}"/>`; }).join('');
   const conc = m.maior_posicao ? m.maior_posicao.peso / m.maior_posicao.teto * 100 : 0;
@@ -227,9 +228,22 @@ function calendarChart(cal) {
 
 function cockpit() {
   const s = S, t = s.totais, m = s.missao;
-  if (s.vazio) return frame('cockpit', `<div class="eyebrow">INSA / Centro de comando</div><h1>Razão vazio.</h1>
-    <div class="card empty"><p>Nenhum lançamento ainda. Importe o arquivo de migração do INSA Wallet ou registre o primeiro aporte.</p>
-    <div class="actions" style="justify-content:center"><a class="btn" href="#/ajustes">Importar migração</a><a class="btn ghost" href="#/registrar">Registrar</a></div></div>`);
+  if (s.vazio) {
+    frame('cockpit', `<div class="eyebrow">INSA / Centro de comando</div><h1>Posições ainda não registradas.</h1>
+      <div class="card empty" id="vazio"><p>Procurando o arquivo de migração do INSA Wallet na pasta Downloads…</p></div>`);
+    (DESK?.procurarMigracao?.() ?? Promise.resolve(null)).then(r => {
+      const el = document.getElementById('vazio'); if (!el) return;
+      if (r?.conteudo?.posicoes?.length && !sessionStorageGet('mig_ignorada')) { MIG = r.conteudo; MIG._arquivo = r.nome; route('migracao'); return; }
+      el.innerHTML = `<p>Nenhum lançamento ainda. Importe o arquivo <b>insa-migracao-….json</b> com as suas cotas, ou registre o primeiro aporte.</p>
+        <div class="actions" style="justify-content:center"><label class="btn" style="cursor:pointer">Escolher arquivo<input type="file" id="migfile0" accept=".json,application/json" class="sr"></label><a class="btn ghost" href="#/registrar">Registrar</a></div>`;
+      document.getElementById('migfile0').addEventListener('change', async (e) => {
+        const f = e.target.files?.[0]; if (!f) return;
+        try { const j = JSON.parse(await f.text()); if (!Array.isArray(j.posicoes)) throw new Error('arquivo sem posições'); MIG = j; route('migracao'); }
+        catch (err) { toast('Arquivo inválido: ' + err.message); }
+      });
+    });
+    return;
+  }
   frame('cockpit', `
     <div class="eyebrow">INSA / Centro de comando</div>
     <h1>A missão em perspectiva, Senhor.</h1>
@@ -287,10 +301,24 @@ function posicoes() {
     <div class="faint">${nf(p.qtd, 0)} × ${brl(p.preco)} <span class="${sign(p.var_dia)}">${p.var_dia == null ? '' : pct(p.var_dia, 2)}</span></div>
     <div class="r faint">PM ${brl(p.preco_medio)}${p.pm_estimado ? ' (est.)' : ''}</div>
     <div class="faint">renda ${brl(p.renda_mes_estimada)}/mês</div><div class="r ${sign(p.resultado)}">${brl(p.resultado)}</div></div>`;
+  if (!ps.length) return frame('posicoes', `<div class="eyebrow">Batalhões</div><h1>Pelotões em campo</h1>
+    <div class="card empty"><p>Nenhuma posição registrada ainda. Importe a migração do INSA Wallet para trazer as suas cotas.</p>
+    <div class="actions" style="justify-content:center"><a class="btn" href="#/cockpit">Importar posições</a></div></div>`);
+  const bats = Object.values(ps.reduce((acc, p) => { const k = p.setor || 'Outros'; (acc[k] ??= { nome: k, itens: [] }).itens.push(p); return acc; }, {}))
+    .map(b => ({ ...b, valor: b.itens.reduce((s, p) => s + p.valor, 0), peso: b.itens.reduce((s, p) => s + p.peso, 0), renda: b.itens.reduce((s, p) => s + p.renda_mes_estimada, 0), resultado: b.itens.reduce((s, p) => s + p.resultado, 0) }))
+    .sort((a, b) => b.valor - a.valor);
   frame('posicoes', `<div class="eyebrow">Batalhões</div><h1>Pelotões em campo</h1>
+    <p class="muted" style="margin-top:-8px">${bats.length} batalhões · ${ps.length} pelotões · ${nf(ps.reduce((s, p) => s + p.qtd, 0), 0)} cotas · ${brl(S.totais.investido)} em ativos</p>
+    <div class="batalhoes">${bats.map(b => `<div class="card batalhao">
+      <div class="bat-topo"><h2>${esc(b.nome)}</h2><b class="num">${pct(b.peso)}</b></div>
+      <div class="bar"><i style="width:${Math.min(100, b.peso * 2.5)}%"></i></div>
+      <div class="bat-num"><span>${brl(b.valor)}</span><span class="pos">${brl(b.renda)}/mês</span><span class="${sign(b.resultado)}">${b.resultado > 0 ? '+' : ''}${brl(b.resultado)}</span></div>
+      <div class="bat-itens">${b.itens.map(p => `<span class="tag ${p.zona}" title="${esc(p.nome)}">${esc(p.ticker)} · ${nf(p.qtd, 0)}</span>`).join('')}</div>
+    </div>`).join('')}</div>
+    <section><h2>Todos os pelotões</h2>
     <div class="table-wrap pos-table"><table><thead><tr><th>Ativo</th><th>Cotas</th><th>Preço médio</th><th>Cotação</th><th>Dia</th><th>Valor</th><th>Peso</th><th>Resultado</th><th>Renda/mês</th><th>Teto Bazin</th><th>Zona</th></tr></thead>
     <tbody>${ps.map(row).join('')}</tbody></table></div>
-    <div class="poscards">${ps.map(card).join('')}</div>
+    <div class="poscards">${ps.map(card).join('')}</div></section>
     <p class="faint" style="margin-top:12px">Zona de ataque: preço ≤ teto Bazin (6%) e (preço ≤ preço médio + 2% ou metade inferior do range de 52 semanas). Espera: acima do teto ou não pagador.</p>`);
 }
 
@@ -607,11 +635,13 @@ async function estrategia() {
 
 // ───────── migração (conferência antes de importar) ─────────
 let MIG = null;
+const sessionStorageGet = (k) => { try { return sessionStorage.getItem(k); } catch { return null; } };
+const sessionStorageSet = (k, v) => { try { sessionStorage.setItem(k, v); } catch {} };
 function migracao() {
   if (!MIG) return route('ajustes');
   const n = S && !S.vazio;
   frame('ajustes', `<div class="eyebrow">Ajustes / Migração</div><h1>Confira antes de importar</h1>
-    <p class="muted">${esc(MIG.fonte || '')}. Corrija o que não bater com o extrato da corretora. Quantidade 0 remove a posição.</p>
+    <p class="muted">${MIG._arquivo ? `Arquivo encontrado nos Downloads: <b>${esc(MIG._arquivo)}</b>. ` : ''}${esc(MIG.fonte || '')}. Corrija o que não bater com o extrato da corretora. Quantidade 0 remove a posição.</p>
     <form id="mf">
       <div class="table-wrap"><table><thead><tr><th>Ativo</th><th>Cotas</th><th>Preço médio (R$)</th><th>Custo</th><th style="text-align:left">Conferir</th></tr></thead><tbody>
       ${MIG.posicoes.map((p, i) => `<tr class="${p.alerta ? 'atual' : ''}"><td><span class="tk">${esc(p.ticker)}</span><span class="nm">${esc(p.nome || '')}</span></td>
@@ -622,26 +652,26 @@ function migracao() {
       </tbody></table></div>
       <div class="row" style="margin-top:14px">
         <label>Data-base<input name="data_base" type="date" value="${esc(MIG.data_base || hoje())}" required></label>
-        <label>Caixa disponível na corretora (R$)<input name="caixa" type="number" step="0.01" min="0" required placeholder="ex.: 120,50" value="${MIG.caixa ?? ''}"></label>
+        <label>Caixa disponível na corretora (R$)<input name="caixa" type="number" step="0.01" min="0" placeholder="0,00" value="${MIG.caixa ?? ''}"></label>
       </div>
       <p class="faint">${esc(MIG.caixa_nota || '')}</p>
       ${n ? `<label class="alert atencao" style="display:flex;gap:10px;align-items:flex-start;color:var(--tx)"><input type="checkbox" name="subst" style="width:auto;min-height:0;margin-top:3px">
         <span>Substituir o razão atual. Os lançamentos existentes serão <b>anulados, não apagados</b>${DESK ? ', e uma cópia completa do banco é salva antes' : ''}.</span></label>` : ''}
       <p class="muted" id="mtot"></p>
-      <div class="actions"><button class="btn">Importar</button><a class="btn ghost" href="#/ajustes" id="mcancel">Cancelar</a></div>
+      <div class="actions"><button class="btn">Importar posições</button><a class="btn ghost" href="#/ajustes" id="mcancel">Cancelar</a></div>
     </form>`);
   const f = document.getElementById('mf');
   const linhas = () => MIG.posicoes.map((p, i) => ({ ticker: p.ticker, qtd: Number(f['q' + i].value || 0), preco_medio: Number(f['pm' + i].value || 0) }));
   const tot = () => { const l = linhas(); l.forEach((p, i) => { document.getElementById('c' + i).textContent = brl(p.qtd * p.preco_medio); });
     document.getElementById('mtot').textContent = `${l.filter(p => p.qtd > 0).length} posições · custo total ${brl(l.reduce((s, p) => s + p.qtd * p.preco_medio, 0))}`; };
   f.addEventListener('input', tot); tot();
-  document.getElementById('mcancel').onclick = () => { MIG = null; };
+  document.getElementById('mcancel').onclick = () => { MIG = null; sessionStorageSet('mig_ignorada', '1'); };
   f.onsubmit = async (ev) => {
     ev.preventDefault(); const b = f.querySelector('button');
     if (n && !f.subst.checked) { toast('Marque "Substituir o razão atual" para continuar.'); return; }
     b.disabled = true;
     try {
-      const r = await api('/api/admin/import-migration', { method: 'POST', body: { migracao: MIG, posicoes: linhas(), caixa: f.caixa.value, data_base: f.data_base.value, substituir: !!f.subst?.checked, confirmado: true } });
+      const r = await api('/api/admin/import-migration', { method: 'POST', body: { migracao: MIG, posicoes: linhas(), caixa: f.caixa.value || 0, data_base: f.data_base.value, substituir: !!f.subst?.checked, confirmado: true } });
       MIG = null; toast(`Migração concluída: ${r.ativos} ativos${r.anulados ? `, ${r.anulados} lançamentos antigos anulados` : ''}.${r.backup ? ' Backup salvo.' : ''}`, 6000);
       await load(); route('cockpit');
     } catch (e) { toast(e.message, 6000); b.disabled = false; }
@@ -838,6 +868,7 @@ window.addEventListener('hashchange', () => { if (S || offline) route(); });
 setInterval(async () => { if (S && document.visibilityState === 'visible') { const v = (location.hash.slice(2) || 'cockpit').split('?')[0]; if (['registrar', 'radar', 'migracao', 'manuel'].includes(v)) return; try { await load(); if (['cockpit', 'posicoes'].includes(v)) route(); } catch {} } }, 120000);
 if (!DESK && 'serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 if (DESK) {
+  DESK.onVisivel?.((v) => document.documentElement.classList.toggle('pausado', !v));
   DESK.updateStatus().then(s => { UPD = s; });
   DESK.onUpdate((s) => {
     const antes = UPD?.estado; UPD = s;
