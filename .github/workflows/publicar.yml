@@ -26,9 +26,14 @@ jobs:
         run: |
           versao="$(node -p "require('./package.json').version")"
           echo "versao=$versao" >> "$GITHUB_OUTPUT"
-          if gh release view "v$versao" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "Release v$versao já existe: nada a publicar."; echo "publicar=nao" >> "$GITHUB_OUTPUT"
+          nomes="$(gh release view "v$versao" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' 2>/dev/null || true)"
+          if echo "$nomes" | grep -qx "latest.yml" && echo "$nomes" | grep -qx "INSA-Command-Setup-$versao.exe"; then
+            echo "Release v$versao completo: nada a publicar."; echo "publicar=nao" >> "$GITHUB_OUTPUT"
           else
+            if [ -n "$nomes" ] || gh release view "v$versao" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              echo "Release v$versao incompleto: apagando para publicar de novo (a tag fica)."
+              gh release delete "v$versao" --repo "$GITHUB_REPOSITORY" --yes
+            fi
             echo "publicar=sim" >> "$GITHUB_OUTPUT"
           fi
       - if: steps.v.outputs.publicar == 'sim'
@@ -44,16 +49,19 @@ jobs:
         run: npm run typecheck
       - if: steps.v.outputs.publicar == 'sim'
         run: npm run build:desktop
-      - name: Criar a tag da versão
+      - name: Compilar o instalador
+        if: steps.v.outputs.publicar == 'sim'
+        run: npx electron-builder --win nsis --x64 --publish never
+      - name: Publicar o release (instalador + blockmap + latest.yml)
         if: steps.v.outputs.publicar == 'sim'
         shell: bash
-        run: |
-          t="v${{ steps.v.outputs.versao }}"
-          if ! git ls-remote --exit-code --tags origin "refs/tags/$t" >/dev/null; then
-            git tag "$t" "$GITHUB_SHA" && git push origin "$t"
-          fi
-      - name: Compilar e publicar
-        if: steps.v.outputs.publicar == 'sim'
-        run: npx electron-builder --win nsis --x64 --publish always
         env:
           GH_TOKEN: ${{ github.token }}
+        run: |
+          v="${{ steps.v.outputs.versao }}"
+          grep -q "^version: $v$" release/latest.yml
+          ls -la release/*.exe release/*.blockmap release/latest.yml
+          git ls-remote --exit-code --tags origin "refs/tags/v$v" >/dev/null || { git tag "v$v" "$GITHUB_SHA" && git push origin "v$v"; }
+          gh release create "v$v" --repo "$GITHUB_REPOSITORY" --verify-tag --title "INSA Command $v" \
+            --notes "Versão $v. O app instalado baixa sozinho e pede para reiniciar. Nenhum dado de carteira é publicado aqui." \
+            "release/INSA-Command-Setup-$v.exe" "release/INSA-Command-Setup-$v.exe.blockmap" release/latest.yml
