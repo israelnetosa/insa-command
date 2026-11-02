@@ -1,0 +1,33 @@
+# Compila o INSA Command num Windows real e publica o release quando uma tag v* é enviada.
+# Os apps instalados leem os releases deste repositório e se atualizam sozinhos.
+# Nenhum dado de carteira passa por aqui: os dados ficam só no computador do dono.
+name: Publicar versão
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+concurrency:
+  group: publicar
+  cancel-in-progress: false
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Conferir que a tag bate com a versão
+        shell: bash
+        run: test "v$(node -p "require('./package.json').version")" = "$GITHUB_REF_NAME"
+      - run: npm ci
+      - run: npm test
+      - run: npm run typecheck
+      - run: npm run build:desktop
+      - name: Compilar e publicar
+        run: npx electron-builder --win nsis --x64 --publish always
+        env:
+          GH_TOKEN: ${{ github.token }}

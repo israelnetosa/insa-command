@@ -1,0 +1,72 @@
+{
+  "name": "insa-command",
+  "productName": "INSA Command",
+  "version": "1.1.1",
+  "description": "Centro de comando privado da carteira INSA Dividend Army",
+  "author": "Israel",
+  "license": "UNLICENSED",
+  "private": true,
+  "type": "module",
+  "main": "dist/main.cjs",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/israelnetosa/insa-command"
+  },
+  "scripts": {
+    "build:web": "esbuild web/app.js --bundle --minify --format=esm --target=es2020 --outfile=public/app.js",
+    "build:desktop": "npm run build:web && esbuild desktop/main.ts --bundle --platform=node --format=cjs --target=node22 --loader:.sql=text --external:electron --external:electron-updater --outfile=dist/main.cjs && node -e \"require('fs').copyFileSync('desktop/preload.cjs','dist/preload.cjs')\"",
+    "test": "node --test \"test/*.test.ts\"",
+    "typecheck": "tsc -p .",
+    "desktop": "npm run build:desktop && electron .",
+    "dist:win": "npm test && npm run build:desktop && electron-builder --win nsis --x64 --publish never",
+    "db:local": "wrangler d1 migrations apply insa-command --local",
+    "db:remote": "wrangler d1 migrations apply insa-command --remote",
+    "dev": "npm run build:web && wrangler dev",
+    "deploy": "npm run build:web && npm test && wrangler deploy"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.11"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261102.1",
+    "@fontsource/jetbrains-mono": "^5.3.0",
+    "@fontsource/rajdhani": "^5.3.0",
+    "@simplewebauthn/browser": "^13.3.0",
+    "@simplewebauthn/server": "^13.3.3",
+    "electron": "^45.2.1",
+    "electron-builder": "^26.18.0",
+    "esbuild": "^0.28.2",
+    "pe-library": "^2.0.1",
+    "resedit": "^2.0.3",
+    "typescript": "^7.0.2",
+    "wrangler": "^4.156.2"
+  },
+  "build": {
+    "appId": "com.insa.command",
+    "productName": "INSA Command",
+    "copyright": "Uso pessoal e privado",
+    "files": ["dist/**", "public/**", "package.json", "!public/sw.js"],
+    "directories": { "output": "release", "buildResources": "build" },
+    "afterPack": "build/afterPack.cjs",
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "icon": "build/icon.ico",
+      "signAndEditExecutable": false,
+      "artifactName": "INSA-Command-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "INSA Command",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "deleteAppDataOnUninstall": false,
+      "language": "1046",
+      "runAfterFinish": true
+    },
+    "publish": [{ "provider": "github", "owner": "israelnetosa", "repo": "insa-command", "releaseType": "release" }]
+  }
+}

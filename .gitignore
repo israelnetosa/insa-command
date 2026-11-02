@@ -1,0 +1,11 @@
+node_modules/
+dist/
+release/
+.wrangler/
+.dev.vars
+public/app.js
+# dados reais da carteira: nunca no repositório
+seed/
+test/privado.test.ts
+*.sqlite
+insa-migracao-*.json
