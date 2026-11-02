@@ -17,7 +17,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Versão nova?
         id: v
         shell: bash
@@ -32,7 +32,7 @@ jobs:
             echo "publicar=sim" >> "$GITHUB_OUTPUT"
           fi
       - if: steps.v.outputs.publicar == 'sim'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -44,6 +44,14 @@ jobs:
         run: npm run typecheck
       - if: steps.v.outputs.publicar == 'sim'
         run: npm run build:desktop
+      - name: Criar a tag da versão
+        if: steps.v.outputs.publicar == 'sim'
+        shell: bash
+        run: |
+          t="v${{ steps.v.outputs.versao }}"
+          if ! git ls-remote --exit-code --tags origin "refs/tags/$t" >/dev/null; then
+            git tag "$t" "$GITHUB_SHA" && git push origin "$t"
+          fi
       - name: Compilar e publicar
         if: steps.v.outputs.publicar == 'sim'
         run: npx electron-builder --win nsis --x64 --publish always
