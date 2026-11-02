@@ -1,10 +1,12 @@
-# Compila o INSA Command num Windows real e publica o release quando uma tag v* é enviada.
-# Os apps instalados leem os releases deste repositório e se atualizam sozinhos.
+# Compila o INSA Command num Windows real e publica o release quando a versão do package.json muda na main.
+# Se o release da versão já existe, não faz nada. Os apps instalados leem os releases e se atualizam sozinhos.
 # Nenhum dado de carteira passa por aqui: os dados ficam só no computador do dono.
 name: Publicar versão
 on:
   push:
-    tags: ['v*']
+    branches: [main]
+    paths: ['package.json']
+  workflow_dispatch:
 permissions:
   contents: write
 concurrency:
@@ -16,18 +18,34 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Versão nova?
+        id: v
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          versao="$(node -p "require('./package.json').version")"
+          echo "versao=$versao" >> "$GITHUB_OUTPUT"
+          if gh release view "v$versao" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release v$versao já existe: nada a publicar."; echo "publicar=nao" >> "$GITHUB_OUTPUT"
+          else
+            echo "publicar=sim" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.v.outputs.publicar == 'sim'
+        uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-      - name: Conferir que a tag bate com a versão
-        shell: bash
-        run: test "v$(node -p "require('./package.json').version")" = "$GITHUB_REF_NAME"
-      - run: npm ci
-      - run: npm test
-      - run: npm run typecheck
-      - run: npm run build:desktop
+      - if: steps.v.outputs.publicar == 'sim'
+        run: npm ci
+      - if: steps.v.outputs.publicar == 'sim'
+        run: npm test
+      - if: steps.v.outputs.publicar == 'sim'
+        run: npm run typecheck
+      - if: steps.v.outputs.publicar == 'sim'
+        run: npm run build:desktop
       - name: Compilar e publicar
+        if: steps.v.outputs.publicar == 'sim'
         run: npx electron-builder --win nsis --x64 --publish always
         env:
           GH_TOKEN: ${{ github.token }}

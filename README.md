@@ -51,7 +51,7 @@ Instale com `INSA-Command-Setup-x.y.z.exe`. Não precisa de terminal, conta nem 
 npm run dist:win     # → release/INSA-Command-Setup-<versão>.exe + latest.yml
 ```
 
-Para publicar uma atualização: suba a `version` no `package.json`, faça o commit e envie a tag `v<versão>`.
+Para publicar uma atualização: suba a `version` no `package.json` e envie o commit para a `main`.
 O GitHub Actions roda os testes, compila o instalador num Windows real e publica o release.
 Os apps instalados recebem a versão sozinhos.
 
