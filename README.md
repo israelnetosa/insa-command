@@ -16,6 +16,17 @@ Centro de comando **privado** da carteira INSA Dividend Army. É a sucessora do 
 | Peso do app | 412 KB de JS | 35 KB (12 KB comprimido) |
 | Hospedagem | Presa ao Manus | Sua conta Cloudflare (plano gratuito) |
 
+## Novidades da 1.3 · HUD tático
+
+- **Visual novo:**
+  - fundo abissal com grade e varredura;
+  - painéis com cantos chanfrados e colchetes de mira;
+  - linhas holográficas em ciano e detalhes âmbar de reator.
+- **Núcleo do cockpit:** um reator de anéis concêntricos com o patrimônio no centro. O anel externo mostra o progresso rumo ao marco, o médio a concentração do maior pelotão contra o teto, e o interno os pelotões em zona de ataque.
+- **Faixa de cotações** correndo no topo, com as posições e as referências do radar. Para quando o mouse passa por cima.
+- **Sequência de inicialização** ao desbloquear e **avatar holográfico** do M.A.N.U.E.L., que acelera ao analisar e mostra ondas ao falar.
+- **Acessibilidade:** a opção "reduzir movimento" do sistema desliga todas as animações.
+
 ## Novidades da 1.2 · M.A.N.U.E.L.
 
 - **Console de IA:** o cérebro é o Claude (Sonnet 5.5) e o Gemini assume se o Claude falhar. O dossiê da carteira entra como dado, nunca como instrução.

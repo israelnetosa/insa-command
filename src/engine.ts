@@ -258,13 +258,13 @@ export function buildState(input: {
 
   const alertas: { nivel: 'critico' | 'atencao' | 'info'; texto: string }[] = [];
   for (const l of linhas) {
-    if (l.var_dia != null && Math.abs(l.var_dia) >= 3) alertas.push({ nivel: 'critico', texto: `${l.ticker} variou ${l.var_dia.toFixed(2)}% contra o fechamento anterior.` });
+    if (l.var_dia != null && Math.abs(l.var_dia) >= 3) alertas.push({ nivel: 'critico', texto: `${l.ticker} variou ${l.var_dia.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}% contra o fechamento anterior.` });
   }
   const semCot = linhas.filter(l => !l.cotacao_ok).map(l => l.ticker);
   if (semCot.length) alertas.push({ nivel: 'atencao', texto: semCot.length === linhas.length
     ? 'Nenhuma cotação disponível ainda: valores calculados pelo preço médio.'
     : `Sem cotação para ${semCot.join(', ')}: valor pelo preço médio.` });
-  if (maior && maior.peso > input.missao.teto_concentracao) alertas.push({ nivel: 'atencao', texto: `${maior.ticker} pesa ${maior.peso}% — acima do teto de ${input.missao.teto_concentracao}%.` });
+  if (maior && maior.peso > input.missao.teto_concentracao) alertas.push({ nivel: 'atencao', texto: `${maior.ticker} pesa ${maior.peso.toLocaleString('pt-BR')}% — acima do teto de ${input.missao.teto_concentracao}%.` });
   if (caixa > 0 && caixa >= Math.min(...linhas.map(l => l.preco).filter(Boolean), Infinity)) alertas.push({ nivel: 'info', texto: `${brl(caixa)} em caixa: soldado ocioso. Veja o plano de compras.` });
   if (linhas.some(l => l.pm_estimado)) alertas.push({ nivel: 'info', texto: 'Há preços médios estimados (importação). Corrija com as notas de corretagem para precisão total.' });
 

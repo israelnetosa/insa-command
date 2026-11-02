@@ -36,10 +36,10 @@ function toast(msg, ms = 3200) {
   document.body.appendChild(t); setTimeout(() => t.remove(), ms);
 }
 
-const EMBLEM = `<svg viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="eg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5fd4e6"/><stop offset="1" stop-color="#f2b45a"/></linearGradient></defs>
+const EMBLEM = `<svg viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="eg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#48e5ff"/><stop offset="1" stop-color="#ffb347"/></linearGradient></defs>
 <path d="M32 3 57 17v30L32 61 7 47V17z" fill="#0e1e27" stroke="url(#eg)" stroke-width="2.5"/>
-<path d="M16 33c5-8 11-12 16-12s11 4 16 12c-5 8-11 12-16 12s-11-4-16-12z" fill="none" stroke="#5fd4e6" stroke-width="2"/>
-<circle cx="32" cy="33" r="6" fill="#f2b45a"/><circle cx="32" cy="33" r="2.4" fill="#071016"/></svg>`;
+<path d="M16 33c5-8 11-12 16-12s11 4 16 12c-5 8-11 12-16 12s-11-4-16-12z" fill="none" stroke="#48e5ff" stroke-width="2"/>
+<circle cx="32" cy="33" r="6" fill="#ffb347"/><circle cx="32" cy="33" r="2.4" fill="#071016"/></svg>`;
 
 // ───────── portão (login / configuração) ─────────
 async function gate() {
@@ -83,8 +83,8 @@ async function gate() {
 // Portão do app de Windows: PIN local
 function pinGate(sess) {
   const novo = !sess.configurado;
-  $app.innerHTML = `<div class="gate"><div class="card">${EMBLEM.replace('<svg', '<svg class="emb"')}
-    <div class="eyebrow">INSA · Centro de Comando</div>
+  $app.innerHTML = `<div class="gate"><div class="card"><div class="mira">${EMBLEM.replace('<svg', '<svg class="emb"')}</div>
+    <div class="eyebrow" style="justify-content:center;--sem-linha:1">INSA / Centro de comando</div>
     <h1 style="margin-bottom:6px">${novo ? 'Bem-vindo, Senhor.' : 'Identifique-se, Senhor.'}</h1>
     <p class="muted">${novo ? 'Crie um PIN de 6 a 12 dígitos. Ele protege o app neste computador e não pode ser recuperado.' : 'Digite o seu PIN.'}</p>
     <form id="pinf"><label>PIN<input name="pin" type="password" inputmode="numeric" pattern="[0-9]{6,12}" minlength="6" maxlength="12" autocomplete="off" required autofocus></label>
@@ -96,9 +96,21 @@ function pinGate(sess) {
     e.preventDefault(); const b = f.querySelector('button'); const msg = document.getElementById('msg'); msg.textContent = '';
     if (novo && f.pin.value !== f.pin2.value) { msg.textContent = 'Os PINs não coincidem.'; return; }
     b.disabled = true;
-    try { await api(novo ? '/api/auth/pin/setup' : '/api/auth/pin/unlock', { method: 'POST', body: { pin: f.pin.value } }); S = null; route('cockpit'); }
+    try { await api(novo ? '/api/auth/pin/setup' : '/api/auth/pin/unlock', { method: 'POST', body: { pin: f.pin.value } }); S = null; await boot(); route('cockpit'); }
     catch (err) { msg.textContent = err.message; f.pin.value = ''; f.pin.focus(); b.disabled = false; }
   };
+}
+
+// Sequência de inicialização: o único momento orquestrado do app (some com "reduzir movimento")
+async function boot() {
+  const carga = load().catch(() => {});
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) { await carga; return; }
+  const el = document.createElement('div'); el.className = 'boot'; el.innerHTML = '<pre aria-live="polite"></pre>'; document.body.appendChild(el);
+  const pre = el.firstChild, linhas = ['Identidade do dono confirmada', 'Livro-razão carregado e conferido', 'Canal de mercado B3 conectado', 'M.A.N.U.E.L. em prontidão'];
+  pre.textContent = '> INSA COMMAND · inicializando sistemas\n';
+  for (const l of linhas) { await new Promise(r => setTimeout(r, 260)); pre.insertAdjacentHTML('beforeend', `> ${esc(l)} … <span class="ok">OK</span>\n`); }
+  await carga; await new Promise(r => setTimeout(r, 280));
+  el.classList.add('sai'); setTimeout(() => el.remove(), 500);
 }
 
 function updBanner() {
@@ -115,9 +127,10 @@ const NAV = [
 function frame(view, inner) {
   const feed = feedStatus();
   $app.innerHTML = `
-  <header class="top"><a class="brand" href="#/cockpit" aria-label="INSA Command, início">${EMBLEM}<span><b>INSA</b><small>Command</small></span></a>
+  <div class="hudtop" id="hudtop"><header class="top"><a class="brand" href="#/cockpit" aria-label="INSA Command, início">${EMBLEM}<span><b>INSA</b><small>Command</small></span></a>
+    <span class="sys"><i class="dot on"></i>Sistemas online</span>
     <span class="feed" title="${esc(feed.title)}"><i class="dot ${feed.cls}"></i>${esc(feed.label)}</span>
-    <div class="clock"><b id="clk">--:--:--</b><small id="clkd"></small></div></header>
+    <div class="clock"><b id="clk">--:--:--</b><small id="clkd"></small></div></header>${fita()}</div>
   <div class="shell">
     <nav class="side" aria-label="Seções">${NAV.map(([id, n, t]) => `<a href="#/${id}" class="${view === id ? 'on' : ''}" ${view === id ? 'aria-current="page"' : ''}><span>${n}</span>${t}</a>`).join('')}</nav>
     <main id="conteudo">${updBanner()}${offline ? `<div class="banner">Sem conexão. Mostrando os dados de ${esc(new Date(S?.gerado_em).toLocaleString('pt-BR'))}.</div>` : ''}${inner}
@@ -125,7 +138,16 @@ function frame(view, inner) {
   </div>
   <nav class="tabs" aria-label="Seções">${NAV.filter(n => !['razao', 'plano', 'registrar'].includes(n[0])).map(([id, , t, i]) => `<a href="#/${id}" class="${view === id ? 'on' : ''}"><i>${i}</i>${t}</a>`).join('')}</nav>`;
   tick();
+  const ht = document.getElementById('hudtop'); if (ht) document.documentElement.style.setProperty('--topo', ht.offsetHeight + 'px');
   document.getElementById('updnow')?.addEventListener('click', () => DESK.installUpdate());
+}
+// Faixa de cotações: posições + referências do radar (quando já carregadas). Lista duplicada para o laço contínuo.
+function fita() {
+  const itens = [...(LIVE?.indices || []).filter(r => r.preco != null).map(r => ({ t: r.nome, v: fmtIdx(r), d: r.var })),
+    ...(S?.posicoes || []).map(p => ({ t: p.ticker, v: brl(p.preco), d: p.var_dia }))];
+  if (!itens.length) return '';
+  const html = itens.map(i => `<span><b>${esc(i.t)}</b>${esc(i.v)} <em class="${sign(i.d)}" style="font-style:normal">${i.d == null ? '' : (i.d > 0 ? '▲ +' : i.d < 0 ? '▼ ' : '') + pct(i.d, 2)}</em></span>`).join('');
+  return `<div class="tape" aria-label="Cotações"><div class="tape-trilho">${html}${html.replace(/<span>/g, '<span aria-hidden="true">')}</div></div>`;
 }
 function feedStatus() {
   const ps = S?.posicoes || [];
@@ -143,10 +165,34 @@ function tick() {
 }
 setInterval(tick, 1000);
 
+function reator(t, m) {
+  const C = 200, arc = (r, v, cor, w = 9) => { const c = 2 * Math.PI * r, f = Math.max(0, Math.min(100, v)) / 100;
+    return `<circle cx="${C}" cy="${C}" r="${r}" fill="none" stroke="rgba(72,229,255,.1)" stroke-width="${w}"/>
+      <circle cx="${C}" cy="${C}" r="${r}" fill="none" stroke="${cor}" stroke-width="${w}" stroke-dasharray="${(c * f).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 ${C} ${C})" style="filter:drop-shadow(0 0 6px ${cor})"/>`; };
+  const ticks = Array.from({ length: 120 }, (_, i) => { const a = i * 3 * Math.PI / 180, l = i % 10 === 0 ? 12 : i % 5 === 0 ? 7 : 4, r1 = 192, r2 = r1 - l;
+    return `<line x1="${(C + r1 * Math.sin(a)).toFixed(1)}" y1="${(C - r1 * Math.cos(a)).toFixed(1)}" x2="${(C + r2 * Math.sin(a)).toFixed(1)}" y2="${(C - r2 * Math.cos(a)).toFixed(1)}" stroke="${i % 30 === 0 ? '#ffb347' : 'rgba(72,229,255,.5)'}" stroke-width="${i % 10 === 0 ? 1.6 : 1}"/>`; }).join('');
+  const conc = m.maior_posicao ? m.maior_posicao.peso / m.maior_posicao.teto * 100 : 0;
+  const corConc = m.maior_posicao && m.maior_posicao.peso > m.maior_posicao.teto ? '#ff4d5e' : '#ffb347';
+  const ataque = m.em_ataque / Math.max(1, t.n_ativos) * 100;
+  return `<svg viewBox="0 0 400 400" role="img" aria-label="Núcleo: patrimônio ${brl(t.patrimonio)}; ${pct(m.progresso_marco)} rumo ao marco; maior posição ${pct(m.maior_posicao?.peso ?? 0)} contra teto de ${m.maior_posicao?.teto ?? 0}%; ${m.em_ataque} de ${t.n_ativos} em zona de ataque">
+    <g class="giro">${ticks}</g>
+    ${arc(166, m.progresso_marco, '#48e5ff', 10)}
+    ${arc(144, conc, corConc, 8)}
+    ${arc(124, ataque, '#5cffb0', 6)}
+    <g class="giro-r"><circle cx="${C}" cy="${C}" r="106" fill="none" stroke="rgba(72,229,255,.35)" stroke-width="1" stroke-dasharray="2 6"/>
+      <path d="M${C} 94 l5 -9 h-10 z M${C} 306 l5 9 h-10 z" fill="#ffb347"/></g>
+    <circle cx="${C}" cy="${C}" r="96" fill="rgba(4,18,28,.85)" stroke="rgba(72,229,255,.4)"/>
+    <text class="centro-lbl" x="${C}" y="${C - 26}" text-anchor="middle">Patrimônio</text>
+    <text class="centro-val" x="${C}" y="${C + 8}" text-anchor="middle">${brl(t.patrimonio)}</text>
+    <text class="centro-sub" x="${C}" y="${C + 32}" text-anchor="middle">${brl(t.investido, 0)} em ativos</text>
+    <text class="centro-sub" x="${C}" y="${C + 48}" text-anchor="middle">${brl(t.caixa)} em caixa</text>
+  </svg>`;
+}
+
 function ring(pctVal, color, label, sub) {
   const r = 40, c = 2 * Math.PI * r, v = Math.max(0, Math.min(100, pctVal));
   return `<div class="card gauge"><svg viewBox="0 0 96 96" role="img" aria-label="${esc(label)}: ${nf(pctVal, 1)}%">
-    <circle cx="48" cy="48" r="${r}" fill="none" stroke="#1b3340" stroke-width="9"/>
+    <circle cx="48" cy="48" r="${r}" fill="none" stroke="rgba(72,229,255,.12)" stroke-width="9"/>
     <circle cx="48" cy="48" r="${r}" fill="none" stroke="${color}" stroke-width="9" stroke-linecap="round" stroke-dasharray="${c * v / 100} ${c}" transform="rotate(-90 48 48)"/></svg>
     <div><b>${label}</b><span>${sub}</span></div></div>`;
 }
@@ -171,12 +217,12 @@ function calendarChart(cal) {
   const bars = cal.map((m, i) => {
     const x = pad + i * bw, he = (m.estimado / max) * (H - 50), hr = (m.recebido / max) * (H - 50);
     return `<g><title>${m.mes}: estimado ${brl(m.estimado)} · recebido ${brl(m.recebido)}</title>
-      <rect x="${x + 6}" y="${H - 28 - he}" width="${bw - 12}" height="${he}" rx="4" fill="none" stroke="#24485a" stroke-dasharray="3 3"/>
-      <rect x="${x + 10}" y="${H - 28 - hr}" width="${bw - 20}" height="${hr}" rx="3" fill="#6fe0a8"/>
-      <text x="${x + bw / 2}" y="${H - 10}" text-anchor="middle" font-size="11" fill="${i === mesAtual ? '#5fd4e6' : '#6a8591'}">${m.mes}</text></g>`;
+      <rect x="${x + 6}" y="${H - 28 - he}" width="${bw - 12}" height="${he}" rx="4" fill="none" stroke="rgba(72,229,255,.35)" stroke-dasharray="3 3"/>
+      <rect x="${x + 10}" y="${H - 28 - hr}" width="${bw - 20}" height="${hr}" rx="3" fill="#5cffb0"/>
+      <text x="${x + bw / 2}" y="${H - 10}" text-anchor="middle" font-size="11" fill="${i === mesAtual ? '#48e5ff' : '#5a8494'}">${m.mes}</text></g>`;
   }).join('');
   return `<div class="chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Proventos por mês: estimado e recebido">${bars}</svg></div>
-    <div class="legend"><span><i style="border:1px dashed #24485a"></i>estimado</span><span><i style="background:#6fe0a8"></i>recebido (razão)</span></div>`;
+    <div class="legend"><span><i style="border:1px dashed rgba(72,229,255,.35)"></i>estimado</span><span><i style="background:#5cffb0"></i>recebido (razão)</span></div>`;
 }
 
 function cockpit() {
@@ -187,25 +233,28 @@ function cockpit() {
   frame('cockpit', `
     <div class="eyebrow">INSA / Centro de comando</div>
     <h1>A missão em perspectiva, Senhor.</h1>
-    <div class="grid g4">
-      <div class="card kpi"><div class="label">Patrimônio total</div><div class="val num">${brl(t.patrimonio)}</div>
-        <div class="faint">${brl(t.investido)} investido · ${brl(t.caixa)} caixa · <a href="#/posicoes">${t.n_ativos} pelotões →</a></div></div>
-      <div class="card kpi"><div class="label">Resultado não realizado</div><div class="val num ${sign(t.resultado)}">${brl(t.resultado)}</div>
-        <div class="faint">contra o preço médio · <a href="#/radar">hoje <b class="${sign(t.resultado_dia)}">${t.resultado_dia > 0 ? '+' : ''}${brl(t.resultado_dia)}</b> →</a>${t.realizado ? ` · realizado ${brl(t.realizado)}` : ''}</div></div>
-      <div class="card kpi"><div class="label">Renda / mês</div><div class="val num pos">${brl(t.renda_mes_estimada)}</div>
-        <div class="faint">estimada · recebido 12m: <b class="${t.renda_12m_recebida ? 'pos' : ''}">${brl(t.renda_12m_recebida)}</b> · DY ${pct(t.dy_carteira, 2)}</div></div>
-      <div class="card kpi"><div class="label">Próximo marco</div><div class="val num">${brl(m.falta_marco)}<small>/mês</small></div>
-        <div class="bar"><i style="width:${Math.min(100, m.progresso_marco)}%"></i></div>
-        <div class="faint">${pct(m.progresso_marco)} de ${brl(m.proximo_marco, 0)}/mês · meta ${brl(m.meta_mensal, 0)} (${pct(m.progresso_meta, 3)})</div></div>
+    <div class="nucleo">
+      <div class="card reator">${reator(t, m)}</div>
+      <div class="leituras">
+        <div class="card kpi leitura"><div class="label">Resultado do dia</div><div class="val num ${sign(t.resultado_dia)}">${t.resultado_dia > 0 ? '+' : ''}${brl(t.resultado_dia)}</div>
+          <div class="faint"><a href="#/radar">Abrir radar ao vivo</a></div></div>
+        <div class="card kpi leitura"><div class="label">Não realizado</div><div class="val num ${sign(t.resultado)}">${brl(t.resultado)}</div>
+          <div class="faint">contra o preço médio${t.realizado ? ` · realizado ${brl(t.realizado)}` : ''}</div></div>
+        <div class="card kpi leitura"><div class="label">Renda mensal</div><div class="val num pos">${brl(t.renda_mes_estimada)}</div>
+          <div class="faint">estimada · DY ${pct(t.dy_carteira, 2)} · recebido em 12 meses ${brl(t.renda_12m_recebida)}</div></div>
+        <div class="card kpi leitura"><div class="label">Próximo marco</div><div class="val num">${brl(m.falta_marco)}<small>/mês</small></div>
+          <div class="bar"><i style="width:${Math.min(100, m.progresso_marco)}%"></i></div>
+          <div class="faint">faltam para ${brl(m.proximo_marco, 0)}/mês · meta ${brl(m.meta_mensal, 0)}</div></div>
+        <div class="card leitura" style="grid-column:1/-1"><h2>Anéis do núcleo</h2><div class="legenda-aneis">
+          <div><i style="background:#48e5ff;box-shadow:0 0 6px #48e5ff"></i>Externo: rumo ao marco de ${brl(m.proximo_marco, 0)}/mês<b>${pct(m.progresso_marco)}</b></div>
+          ${m.maior_posicao ? `<div><i style="background:${m.maior_posicao.peso > m.maior_posicao.teto ? '#ff4d5e' : '#ffb347'}"></i>Médio: maior pelotão, ${esc(m.maior_posicao.ticker)}, contra o teto de ${m.maior_posicao.teto}%<b>${pct(m.maior_posicao.peso)}</b></div>` : ''}
+          <div><i style="background:#5cffb0"></i>Interno: pelotões em zona de ataque<b>${m.em_ataque} de ${t.n_ativos}</b></div>
+        </div></div>
+      </div>
     </div>
-    <section class="gauges">
-      ${ring(m.progresso_marco, '#5fd4e6', pct(m.progresso_marco), `rumo ao marco de ${brl(m.proximo_marco, 0)}/mês`)}
-      ${m.maior_posicao ? ring(m.maior_posicao.peso / m.maior_posicao.teto * 100, m.maior_posicao.peso > m.maior_posicao.teto ? '#ff6b6b' : '#f2b45a', pct(m.maior_posicao.peso), `maior pelotão · ${esc(m.maior_posicao.ticker)} · teto ${m.maior_posicao.teto}%`) : ''}
-      ${ring(m.em_ataque / Math.max(1, t.n_ativos) * 100, '#6fe0a8', `${m.em_ataque} de ${t.n_ativos}`, 'em zona de ataque')}
-    </section>
     <section class="grid g2">
       <div class="card ponte"><div class="eyebrow">M.A.N.U.E.L. / Leitura da ponte</div><p>${esc(leituraPonte(s))}</p>
-        <p class="faint">Calculada no aparelho a partir da carteira e das cotações. Sem IA, instantânea. <a href="#/manuel">Abrir console M.A.N.U.E.L. →</a></p></div>
+        <p class="faint">Calculada no aparelho a partir da carteira e das cotações. Sem IA, instantânea. <a href="#/manuel">Abrir console M.A.N.U.E.L.</a></p></div>
       <div class="card"><div class="eyebrow">Próximo passo / Plano de compras · ${esc(m.fase?.nome ?? '')}</div>
         ${s.plano.compras.length ? `<table style="margin-top:8px"><tbody>${s.plano.compras.map(c => `<tr><td><span class="tk">${esc(c.ticker)}</span></td><td>${c.qtd} × ${brl(c.preco)}</td><td>${brl(c.valor)}</td></tr>`).join('')}
           <tr><td class="faint">sobra</td><td></td><td class="faint">${brl(s.plano.sobra)}</td></tr></tbody></table>
@@ -442,8 +491,8 @@ function spark(serie, ref, w = 120, h = 32) {
   const pts = serie.map((v, i) => `${(i / (serie.length - 1) * w).toFixed(1)},${(h - 2 - (v - min) / span * (h - 4)).toFixed(1)}`).join(' ');
   const up = serie[serie.length - 1] >= (ref ?? serie[0]);
   const yRef = ref ? (h - 2 - (ref - min) / span * (h - 4)).toFixed(1) : null;
-  return `<svg class="spark" viewBox="0 0 ${w} ${h}" aria-hidden="true">${yRef ? `<line x1="0" x2="${w}" y1="${yRef}" y2="${yRef}" stroke="#24485a" stroke-dasharray="2 3"/>` : ''}
-    <polyline points="${pts}" fill="none" stroke="${up ? '#6fe0a8' : '#ff6b6b'}" stroke-width="1.6" stroke-linejoin="round"/></svg>`;
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" aria-hidden="true">${yRef ? `<line x1="0" x2="${w}" y1="${yRef}" y2="${yRef}" stroke="rgba(72,229,255,.35)" stroke-dasharray="2 3"/>` : ''}
+    <polyline points="${pts}" fill="none" stroke="${up ? '#5cffb0' : '#ff4d5e'}" stroke-width="1.6" stroke-linejoin="round"/></svg>`;
 }
 function dur(ms) { const m = Math.max(0, Math.round(ms / 60000)); const d = Math.floor(m / 1440), h = Math.floor((m % 1440) / 60), mi = m % 60; return d ? `${d}d ${h}h` : h ? `${h}h ${mi}min` : `${mi} min`; }
 function atrasoTxt(r) {
@@ -646,6 +695,21 @@ function bolha(m) {
       <button class="linkbtn" data-falar="${m.id ?? ''}" title="Ouvir">🔊 ouvir</button></div>
   </div></div>`;
 }
+const HOLO = `<svg class="holo" id="holo" viewBox="0 0 200 200" aria-hidden="true">
+  <g class="g1"><circle cx="100" cy="100" r="92" fill="none" stroke="rgba(72,229,255,.55)" stroke-width="1.2" stroke-dasharray="3 7"/>
+    <path d="M100 4 l4 8 h-8z M100 196 l4 -8 h-8z M4 100 l8 4 v-8z M196 100 l-8 4 v-8z" fill="#ffb347"/></g>
+  <g class="g2"><circle cx="100" cy="100" r="76" fill="none" stroke="rgba(72,229,255,.8)" stroke-width="2" stroke-dasharray="40 14 6 14"/>
+    <circle cx="100" cy="100" r="66" fill="none" stroke="rgba(255,179,71,.6)" stroke-width="1" stroke-dasharray="1 9"/></g>
+  <circle cx="100" cy="100" r="56" fill="rgba(4,18,28,.9)" stroke="rgba(72,229,255,.5)"/>
+  <g class="olho"><path d="M62 92c11-16 24-24 38-24s27 8 38 24c-11 16-24 24-38 24s-27-8-38-24z" fill="none" stroke="#48e5ff" stroke-width="2.4"/>
+    <circle cx="100" cy="92" r="11" fill="#ffb347"/><circle cx="100" cy="92" r="4.5" fill="#02070c"/></g>
+  <g class="onda" fill="#48e5ff">${[0, 1, 2, 3, 4, 5, 6, 7, 8].map(i => `<rect x="${73 + i * 6}" y="118" width="3" height="16" rx="1"/>`).join('')}</g>
+</svg>`;
+function holoEstado(e) {
+  const h = document.getElementById('holo'); if (!h) return;
+  h.classList.remove('pensando', 'falando'); if (e) h.classList.add(e);
+  const t = document.getElementById('estado'); if (t) t.textContent = { pensando: 'Analisando', falando: 'Transmitindo' }[e] || 'Em prontidão';
+}
 function falar(texto) {
   pararFala();
   const cfg = CONV?.config || {};
@@ -654,7 +718,7 @@ function falar(texto) {
   if (cfg.voz_motor === 'gemini' && CONV?.chaves?.gemini) {
     fetch('/api/manuel/voz', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ texto: limpo }) })
       .then(r => r.ok ? r.blob() : r.json().then(j => Promise.reject(new Error(j.erro))))
-      .then(b => { AUDIO = new Audio(URL.createObjectURL(b)); AUDIO.play(); })
+      .then(b => { AUDIO = new Audio(URL.createObjectURL(b)); AUDIO.onplay = () => holoEstado('falando'); AUDIO.onended = AUDIO.onpause = () => holoEstado(null); AUDIO.play(); })
       .catch(e => { toast('Voz natural indisponível: ' + e.message + ' Usando a voz do Windows.'); falarWindows(limpo); });
     return;
   }
@@ -666,15 +730,19 @@ function falarWindows(texto) {
   const vs = speechSynthesis.getVoices().filter(v => /^pt(-|_)BR/i.test(v.lang));
   u.voice = vs.find(v => /antonio/i.test(v.name)) || vs.find(v => /daniel|male|masculin/i.test(v.name)) || vs[0] || null;
   u.lang = 'pt-BR'; u.rate = 1.02;
+  u.onstart = () => holoEstado('falando'); u.onend = u.onerror = () => holoEstado(null);
   speechSynthesis.speak(u);
 }
-function pararFala() { try { speechSynthesis.cancel(); } catch {} if (AUDIO) { AUDIO.pause(); AUDIO = null; } }
+function pararFala() { try { speechSynthesis.cancel(); } catch {} if (AUDIO) { AUDIO.pause(); AUDIO = null; } holoEstado(null); }
 
 async function manuel() {
   CONV = await api('/api/manuel/conversa');
   const c = CONV, semChave = !c.chaves.claude && !c.chaves.gemini;
   const ativo = c.config.provedor === 'gemini' ? (c.chaves.gemini ? 'Gemini' : 'Claude') : (c.chaves.claude ? 'Claude' : 'Gemini');
-  frame('manuel', `<div class="eyebrow">M.A.N.U.E.L. / Console</div><h1>Às ordens, Senhor.</h1>
+  frame('manuel', `<div class="eyebrow">M.A.N.U.E.L. / Console</div>
+    <div class="presenca"><div>${HOLO}</div><div><h1 style="margin-bottom:4px">Às ordens, Senhor.</h1>
+      <div class="estado-ia" id="estado">Em prontidão</div>
+      <p class="faint" style="margin:6px 0 0">Oficial de inteligência da carteira. Analisa, simula e pesquisa; lançamentos só com a sua confirmação.</p></div></div>
     ${semChave ? `<div class="banner">Nenhuma chave de IA configurada. <a href="#/ajustes">Cadastre a do Claude e/ou a do Gemini em Ajustes → Inteligência.</a></div>` : ''}
     <div class="livebar">
       <span class="chip ${semChave ? '' : 'open'}"><i class="dot ${semChave ? '' : 'on'}"></i>${semChave ? 'sem IA' : ativo + (c.chaves.claude && c.chaves.gemini ? ' + reserva' : '')}</span>
@@ -691,14 +759,20 @@ async function manuel() {
         <button class="btn" ${semChave ? 'disabled' : ''}>Enviar</button></form>
       <p class="faint">M.A.N.U.E.L. analisa e organiza; não envia ordens nem é recomendação de investimento. Lançamentos só entram no razão com o seu clique.</p>
     </div>`);
-  const th = document.getElementById('thread'); th.scrollTop = th.scrollHeight;
+  const th = document.getElementById('thread');
   const f = document.getElementById('cf'), ta = f.t;
+  // a conversa ocupa o espaço que sobrar, para a caixa de mensagem ficar sempre visível
+  const ajustar = () => { if (!document.body.contains(th)) return removeEventListener('resize', ajustar);
+    const sobra = innerHeight - f.getBoundingClientRect().bottom - 12 + th.clientHeight;
+    th.style.maxHeight = Math.max(240, sobra) + 'px'; th.style.minHeight = Math.min(300, Math.max(240, sobra)) + 'px'; };
+  ajustar(); addEventListener('resize', ajustar);
+  th.scrollTop = th.scrollHeight;
   const enviar = async (texto) => {
     texto = texto.trim(); if (!texto) return;
     const b = f.querySelector('button'); b.disabled = true; ta.value = '';
     th.querySelector('.empty')?.remove();
     th.insertAdjacentHTML('beforeend', bolha({ papel: 'usuario', texto }) + `<div class="msg ele pensando" id="pens"><div class="avatar">${EMBLEM}</div><div class="balao"><span class="dots"><i></i><i></i><i></i></span> analisando a carteira…</div></div>`);
-    th.scrollTop = th.scrollHeight;
+    th.scrollTop = th.scrollHeight; holoEstado('pensando');
     try {
       const r = await api('/api/manuel/mensagem', { method: 'POST', body: { texto } });
       CONV.propostas = (CONV.propostas || []).concat(r.propostas || []);
@@ -706,10 +780,10 @@ async function manuel() {
       CONV.uso.chamadas++;
       document.getElementById('pens')?.remove();
       th.insertAdjacentHTML('beforeend', bolha({ papel: 'manuel', texto: r.texto, meta: r.meta }));
-      th.scrollTop = th.scrollHeight;
+      th.scrollTop = th.scrollHeight; holoEstado(null);
       if (CONV.config.fala_auto) falar(r.texto);
     } catch (e) {
-      document.getElementById('pens')?.remove();
+      document.getElementById('pens')?.remove(); holoEstado(null);
       th.insertAdjacentHTML('beforeend', `<div class="alert atencao">${esc(e.message)}</div>`);
       ta.value = texto;
     }
