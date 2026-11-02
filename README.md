@@ -16,6 +16,19 @@ Centro de comando **privado** da carteira INSA Dividend Army. É a sucessora do 
 | Peso do app | 412 KB de JS | 35 KB (12 KB comprimido) |
 | Hospedagem | Presa ao Manus | Sua conta Cloudflare (plano gratuito) |
 
+## Novidades da 1.2 · M.A.N.U.E.L.
+
+- **Console de IA:** o cérebro é o Claude (Sonnet 5.5) e o Gemini assume se o Claude falhar. O dossiê da carteira entra como dado, nunca como instrução.
+- **Ferramentas:**
+  - simular aporte;
+  - focar ativo;
+  - varrer oportunidades da fase;
+  - pesquisar com fontes, feita pelo Gemini com Google Search e com as fontes citadas;
+  - propor lançamento.
+- **Lançamentos só com o seu clique:** a IA prepara a proposta com a prévia antes/depois, e você confirma ou recusa. Cada proposta só pode ser confirmada uma vez e é revalidada contra o razão no momento da confirmação.
+- **Voz:** a do Windows (grátis, offline) ou a voz natural do Gemini (TTS). Pode falar as respostas automaticamente.
+- **Custos sob controle:** limite diário de mensagens e contador de tokens do dia.
+
 ## Novidades da 1.1
 
 - **Radar ao vivo:**

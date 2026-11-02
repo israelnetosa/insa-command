@@ -2,8 +2,9 @@
 // Regra de ouro: toda rota /api, exceto login, exige sessão do dono. Nada é público.
 
 import { handleAuth, currentSession, isConfigured, json, type Env } from './auth';
-import { buildState, replay, LedgerError, type Movement } from './engine';
-import { refreshQuotes, liveRefresh, emPregao, pregao, INDICES } from './market';
+import { buildState, replay, planoCompras, faseAtual, LedgerError, type Movement } from './engine';
+import { conversar, voz, CONFIG_PADRAO, type Toolkit, type IAConfig } from './manuel';
+import { refreshQuotes, liveRefresh, emPregao, pregao, INDICES, fetchQuote } from './market';
 import { seedMovements, seedAssets, seedSettings, validarMigracao } from './seed';
 
 const SECURITY_HEADERS: Record<string, string> = {
@@ -74,6 +75,92 @@ async function state(env: Env) {
 
 async function audit(env: Env, acao: string, dados?: unknown) {
   await env.DB.prepare('INSERT INTO audit (acao, dados) VALUES (?, ?)').bind(acao, dados ? JSON.stringify(dados) : null).run();
+}
+
+
+// ───────── M.A.N.U.E.L. ─────────
+async function lerConfigIA(env: Env) {
+  const r = await env.DB.prepare(`SELECT valor FROM settings WHERE chave = 'ia_config'`).first<{ valor: string }>();
+  const c = r ? JSON.parse(r.valor) : {};
+  return { ...CONFIG_PADRAO, limite_diario: 60, voz_motor: 'windows', voz_nome: 'Charon', fala_auto: false, ...c } as IAConfig & { limite_diario: number; voz_motor: string; voz_nome: string; fala_auto: boolean };
+}
+const hojeISO = () => new Date().toISOString().slice(0, 10);
+
+/** Prévia do efeito de um lançamento no razão atual (não grava). */
+async function previa(env: Env, m: Movement) {
+  const d = await loadAll(env);
+  const antes = replay(d.movements);
+  const depois = replay([...d.movements, m]);
+  const t = m.ticker ?? '';
+  const lotA = antes.lots.get(t), lotD = depois.lots.get(t);
+  const efeito = {
+    caixa: { antes: antes.caixa, depois: depois.caixa },
+    posicao: t ? {
+      ticker: t,
+      qtd: { antes: lotA?.qtd ?? 0, depois: lotD?.qtd ?? 0 },
+      preco_medio: { antes: +(lotA?.pm ?? 0).toFixed(2), depois: +(lotD?.pm ?? 0).toFixed(2) },
+      realizado: +((lotD?.realizado ?? 0) - (lotA?.realizado ?? 0)).toFixed(2),
+    } : null,
+    avisos: [] as string[],
+  };
+  if (depois.caixa < 0) efeito.avisos.push('O caixa ficará negativo. Falta registrar um aporte?');
+  if (t && !d.assets.some((a: any) => a.ticker === t)) efeito.avisos.push(`${t} é um ativo novo: será cadastrado e cotado automaticamente.`);
+  return efeito;
+}
+
+/** Grava um lançamento validado no razão. */
+async function gravar(env: Env, m: Movement, origem: 'manual' | 'ia_confirmada') {
+  const ins = await env.DB.prepare(
+    `INSERT INTO movements (data, tipo, ticker, qtd, preco, valor, custos, subtipo, nota, origem)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+  ).bind(m.data, m.tipo, m.ticker ?? null, m.qtd ?? null, m.preco ?? null, m.valor ?? null, m.custos ?? 0, m.subtipo ?? null, m.nota ?? null, origem).first<{ id: number }>();
+  if (m.ticker) {
+    await env.DB.prepare('INSERT OR IGNORE INTO assets (ticker, nome) VALUES (?, ?)').bind(m.ticker, m.ticker).run();
+    await refreshQuotes(env.DB, [m.ticker], env.BRAPI_TOKEN).catch(() => null);
+  }
+  await audit(env, origem === 'manual' ? 'lancamento_gravado' : 'lancamento_ia_confirmado', { id: ins?.id, ...m });
+  return ins?.id;
+}
+
+function toolkit(env: Env): Toolkit {
+  let cache: any = null;
+  return {
+    state: async () => (cache ??= await state(env)),
+    ultimos: async (n) => (await env.DB.prepare('SELECT data, tipo, ticker, qtd, preco, valor, anulado FROM movements ORDER BY data DESC, id DESC LIMIT ?').bind(n).all()).results as any[],
+    cotacao: async (t) => {
+      let q: any = await env.DB.prepare('SELECT ticker, preco, fechamento_ant, fonte, cotado_em FROM quotes WHERE ticker = ?').bind(t).first();
+      if (!q || Date.now() - q.cotado_em > 30 * 60_000) { const f = await fetchQuote(t, env.BRAPI_TOKEN).catch(() => null); if (f) q = f; }
+      if (!q) return null;
+      return { preco: q.preco, fechamento_anterior: q.fechamento_ant, variacao: q.fechamento_ant ? +((q.preco / q.fechamento_ant - 1) * 100).toFixed(2) : null, fonte: q.fonte, cotado_em: new Date(q.cotado_em).toISOString(), aviso: 'B3 gratuita: até ~15 min de atraso' };
+    },
+    simular: async (v) => {
+      const st = cache ??= await state(env);
+      const assets = (await env.DB.prepare('SELECT ticker, div_mes_cota FROM assets').all<any>()).results;
+      const dmc = new Map(assets.map((a: any) => [a.ticker, a.div_mes_cota ?? 0]));
+      const fase = faseAtual(st.totais.patrimonio + v, st.fases);
+      const precos: Record<string, number> = {};
+      for (const p of st.posicoes) precos[p.ticker] = p.preco;
+      const q = (await env.DB.prepare('SELECT ticker, preco FROM quotes').all<any>()).results;
+      for (const r of q) precos[r.ticker] ??= r.preco;
+      const plano = planoCompras(st.posicoes, st.totais.caixa + v, fase, precos);
+      const rendaExtra = plano.compras.reduce((s, c) => s + c.qtd * (Number(dmc.get(c.ticker)) || 0), 0);
+      return { caixa_atual: st.totais.caixa, aporte: v, disponivel: +(st.totais.caixa + v).toFixed(2), fase: fase?.nome, compras: plano.compras, sobra: plano.sobra,
+        renda_mensal_adicional_estimada: +rendaExtra.toFixed(2), regra: 'ativo mais atrasado contra o peso-alvo, cotas inteiras, sem vendas' };
+    },
+    propor: async (args, pedido) => {
+      const m = normalizeMov(args);
+      const efeito = await previa(env, m);
+      const r = await env.DB.prepare('INSERT INTO propostas (lancamento, efeito, pedido) VALUES (?, ?, ?) RETURNING id')
+        .bind(JSON.stringify(m), JSON.stringify(efeito), pedido).first<{ id: number }>();
+      return { id: r!.id, lancamento: m, efeito };
+    },
+  };
+}
+
+async function propostasPorIds(env: Env, ids: number[]) {
+  if (!ids.length) return [];
+  const r = await env.DB.prepare(`SELECT * FROM propostas WHERE id IN (${ids.map(() => '?').join(',')})`).bind(...ids).all<any>();
+  return r.results.map((p: any) => ({ ...p, lancamento: JSON.parse(p.lancamento), efeito: p.efeito ? JSON.parse(p.efeito) : null }));
 }
 
 async function api(req: Request, env: Env, url: URL): Promise<Response> {
@@ -189,6 +276,92 @@ async function api(req: Request, env: Env, url: URL): Promise<Response> {
         resultado_dia_pct: st.totais.investido ? Math.round(st.totais.resultado_dia / (st.totais.investido - st.totais.resultado_dia) * 10000) / 100 : 0 },
       aviso: 'Dados gratuitos: ações e FIIs da B3 com até ~15 min de atraso; dólar e bitcoin quase em tempo real. Não é preço de execução.',
     });
+  }
+
+  // ───────── M.A.N.U.E.L. ─────────
+  if (path === '/api/manuel/conversa' && req.method === 'GET') {
+    const msgs = (await env.DB.prepare('SELECT * FROM (SELECT * FROM conversa ORDER BY id DESC LIMIT 80) ORDER BY id').all<any>()).results
+      .map((m: any) => ({ ...m, meta: m.meta ? JSON.parse(m.meta) : null }));
+    const ids = msgs.flatMap((m: any) => m.meta?.propostas ?? []);
+    const cfg = await lerConfigIA(env);
+    const uso = await env.DB.prepare('SELECT * FROM ia_uso WHERE dia = ?').bind(hojeISO()).first<any>();
+    return json({ mensagens: msgs, propostas: await propostasPorIds(env, ids), config: cfg,
+      chaves: { claude: !!env.ANTHROPIC_API_KEY, gemini: !!env.GEMINI_API_KEY }, uso: uso ?? { dia: hojeISO(), chamadas: 0, entrada: 0, saida: 0 } });
+  }
+
+  if (path === '/api/manuel/mensagem' && req.method === 'POST') {
+    const body: any = await req.json().catch(() => ({}));
+    const texto = String(body.texto ?? '').trim().slice(0, 4000);
+    if (!texto) return json({ erro: 'Mensagem vazia.' }, 400);
+    const cfg = await lerConfigIA(env);
+    const uso = await env.DB.prepare('SELECT chamadas FROM ia_uso WHERE dia = ?').bind(hojeISO()).first<{ chamadas: number }>();
+    if ((uso?.chamadas ?? 0) >= cfg.limite_diario) return json({ erro: `Limite diário de ${cfg.limite_diario} mensagens atingido. Ajuste em Ajustes → Inteligência.` }, 429);
+    const hist = (await env.DB.prepare('SELECT papel, texto FROM (SELECT * FROM conversa ORDER BY id DESC LIMIT 16) ORDER BY id').all<any>()).results;
+    const st = await state(env);
+    let r;
+    try {
+      r = await conversar({ texto, historico: hist, tk: toolkit(env), cfg, chaves: { anthropic: env.ANTHROPIC_API_KEY, gemini: env.GEMINI_API_KEY },
+        estrategia: st.estrategia, regras: st.regras });
+    } catch (e) { return json({ erro: (e as Error).message }, 502); }
+    const meta = { provedor: r.provedor, modelo: r.modelo, ferramentas: r.ferramentas, propostas: r.propostas, fontes: r.fontes, uso: r.uso };
+    await env.DB.batch([
+      env.DB.prepare(`INSERT INTO conversa (papel, texto) VALUES ('usuario', ?)`).bind(texto),
+      env.DB.prepare(`INSERT INTO conversa (papel, texto, meta) VALUES ('manuel', ?, ?)`).bind(r.texto || '(sem texto)', JSON.stringify(meta)),
+      env.DB.prepare(`INSERT INTO ia_uso (dia, chamadas, entrada, saida) VALUES (?, 1, ?, ?)
+        ON CONFLICT(dia) DO UPDATE SET chamadas = chamadas + 1, entrada = entrada + excluded.entrada, saida = saida + excluded.saida`).bind(hojeISO(), r.uso.entrada, r.uso.saida),
+    ]);
+    return json({ texto: r.texto, meta, propostas: await propostasPorIds(env, r.propostas) });
+  }
+
+  if (path === '/api/manuel/limpar' && req.method === 'POST') {
+    await env.DB.prepare('DELETE FROM conversa').run();
+    await audit(env, 'conversa_limpa');
+    return json({ ok: true });
+  }
+
+  const prop = path.match(/^\/api\/manuel\/propostas\/(\d+)\/(confirmar|recusar)$/);
+  if (prop && req.method === 'POST') {
+    const id = Number(prop[1]);
+    const p = (await propostasPorIds(env, [id]))[0];
+    if (!p) return json({ erro: 'Proposta não encontrada.' }, 404);
+    if (p.status !== 'pendente') return json({ erro: `Proposta já ${p.status}.` }, 409);
+    if (prop[2] === 'recusar') {
+      await env.DB.prepare(`UPDATE propostas SET status = 'recusada', resolvida_em = datetime('now') WHERE id = ?`).bind(id).run();
+      await audit(env, 'proposta_recusada', { id });
+      return json({ ok: true, status: 'recusada' });
+    }
+    let m: Movement;
+    try { m = normalizeMov(p.lancamento); await previa(env, m); }   // revalida contra o razão de agora
+    catch (e) { return json({ erro: 'A proposta não é mais válida: ' + (e as Error).message }, 400); }
+    const movId = await gravar(env, m, 'ia_confirmada');
+    await env.DB.prepare(`UPDATE propostas SET status = 'confirmada', resolvida_em = datetime('now'), movimento_id = ? WHERE id = ?`).bind(movId, id).run();
+    return json({ ok: true, status: 'confirmada', movimento_id: movId });
+  }
+
+  if (path === '/api/manuel/voz' && req.method === 'POST') {
+    if (!env.GEMINI_API_KEY) return json({ erro: 'Voz natural requer a chave do Gemini.' }, 400);
+    const body: any = await req.json().catch(() => ({}));
+    const cfg = await lerConfigIA(env);
+    try {
+      const audio = await voz(String(body.texto ?? '').slice(0, 1500), env.GEMINI_API_KEY, String(body.voz || cfg.voz_nome), fetch);
+      return new Response(audio, { headers: { 'Content-Type': 'audio/wav' } });
+    } catch (e) { return json({ erro: (e as Error).message }, 502); }
+  }
+
+  if (path === '/api/manuel/config' && req.method === 'POST') {
+    const b: any = await req.json().catch(() => ({}));
+    const atual = await lerConfigIA(env);
+    const novo = {
+      provedor: b.provedor === 'gemini' ? 'gemini' : b.provedor === 'claude' ? 'claude' : atual.provedor,
+      modeloClaude: /^claude-[a-z0-9.-]{3,60}$/.test(b.modeloClaude ?? '') ? b.modeloClaude : atual.modeloClaude,
+      modeloGemini: b.modeloGemini === 'auto' || /^gemini-[a-z0-9.-]{3,60}$/.test(b.modeloGemini ?? '') ? b.modeloGemini : atual.modeloGemini,
+      limite_diario: Number.isInteger(b.limite_diario) && b.limite_diario >= 1 && b.limite_diario <= 1000 ? b.limite_diario : atual.limite_diario,
+      voz_motor: ['windows', 'gemini', 'desligada'].includes(b.voz_motor) ? b.voz_motor : atual.voz_motor,
+      voz_nome: /^[A-Za-z]{2,20}$/.test(b.voz_nome ?? '') ? b.voz_nome : atual.voz_nome,
+      fala_auto: typeof b.fala_auto === 'boolean' ? b.fala_auto : atual.fala_auto,
+    };
+    await env.DB.prepare(`INSERT OR REPLACE INTO settings (chave, valor) VALUES ('ia_config', ?)`).bind(JSON.stringify(novo)).run();
+    return json(novo);
   }
 
   if (path === '/api/historico-legado' && req.method === 'GET') {

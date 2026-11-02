@@ -1,7 +1,7 @@
 {
   "name": "insa-command",
   "productName": "INSA Command",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "Centro de comando privado da carteira INSA Dividend Army",
   "author": "Israel",
   "license": "UNLICENSED",
@@ -45,11 +45,26 @@
     "appId": "com.insa.command",
     "productName": "INSA Command",
     "copyright": "Uso pessoal e privado",
-    "files": ["dist/**", "public/**", "package.json", "!public/sw.js"],
-    "directories": { "output": "release", "buildResources": "build" },
+    "files": [
+      "dist/**",
+      "public/**",
+      "package.json",
+      "!public/sw.js"
+    ],
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
     "afterPack": "build/afterPack.cjs",
     "win": {
-      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
       "icon": "build/icon.ico",
       "signAndEditExecutable": false,
       "artifactName": "INSA-Command-Setup-${version}.${ext}"
@@ -67,6 +82,13 @@
       "language": "1046",
       "runAfterFinish": true
     },
-    "publish": [{ "provider": "github", "owner": "israelnetosa", "repo": "insa-command", "releaseType": "release" }]
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "israelnetosa",
+        "repo": "insa-command",
+        "releaseType": "release"
+      }
+    ]
   }
 }

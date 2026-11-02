@@ -109,8 +109,8 @@ function updBanner() {
 
 // ───────── moldura ─────────
 const NAV = [
-  ['cockpit', '01', 'Cockpit', '◎'], ['radar', '02', 'Radar', '◉'], ['posicoes', '03', 'Pelotões', '▤'], ['registrar', '04', 'Registrar', '＋'],
-  ['estrategia', '05', 'Estratégia', '◆'], ['plano', '06', 'Fases e regras', '◇'], ['razao', '07', 'Livro-razão', '≣'], ['ajustes', '08', 'Ajustes', '⚙'],
+  ['cockpit', '01', 'Cockpit', '◎'], ['manuel', '02', 'M.A.N.U.E.L.', '◈'], ['radar', '03', 'Radar', '◉'], ['posicoes', '04', 'Pelotões', '▤'],
+  ['registrar', '05', 'Registrar', '＋'], ['estrategia', '06', 'Estratégia', '◆'], ['plano', '07', 'Fases e regras', '◇'], ['razao', '08', 'Livro-razão', '≣'], ['ajustes', '09', 'Ajustes', '⚙'],
 ];
 function frame(view, inner) {
   const feed = feedStatus();
@@ -123,7 +123,7 @@ function frame(view, inner) {
     <main id="conteudo">${updBanner()}${offline ? `<div class="banner">Sem conexão. Mostrando os dados de ${esc(new Date(S?.gerado_em).toLocaleString('pt-BR'))}.</div>` : ''}${inner}
       <p class="footer">Conteúdo informativo, não é recomendação de investimento. Confirme preços e datas-com antes de enviar ordens. Nenhuma ordem é enviada à corretora por este app.</p></main>
   </div>
-  <nav class="tabs" aria-label="Seções">${NAV.filter(n => !['razao', 'plano'].includes(n[0])).map(([id, , t, i]) => `<a href="#/${id}" class="${view === id ? 'on' : ''}"><i>${i}</i>${t}</a>`).join('')}</nav>`;
+  <nav class="tabs" aria-label="Seções">${NAV.filter(n => !['razao', 'plano', 'registrar'].includes(n[0])).map(([id, , t, i]) => `<a href="#/${id}" class="${view === id ? 'on' : ''}"><i>${i}</i>${t}</a>`).join('')}</nav>`;
   tick();
   document.getElementById('updnow')?.addEventListener('click', () => DESK.installUpdate());
 }
@@ -205,7 +205,7 @@ function cockpit() {
     </section>
     <section class="grid g2">
       <div class="card ponte"><div class="eyebrow">M.A.N.U.E.L. / Leitura da ponte</div><p>${esc(leituraPonte(s))}</p>
-        <p class="faint">Calculada no aparelho a partir da carteira e das cotações. Sem IA, instantânea.</p></div>
+        <p class="faint">Calculada no aparelho a partir da carteira e das cotações. Sem IA, instantânea. <a href="#/manuel">Abrir console M.A.N.U.E.L. →</a></p></div>
       <div class="card"><div class="eyebrow">Próximo passo / Plano de compras · ${esc(m.fase?.nome ?? '')}</div>
         ${s.plano.compras.length ? `<table style="margin-top:8px"><tbody>${s.plano.compras.map(c => `<tr><td><span class="tk">${esc(c.ticker)}</span></td><td>${c.qtd} × ${brl(c.preco)}</td><td>${brl(c.valor)}</td></tr>`).join('')}
           <tr><td class="faint">sobra</td><td></td><td class="faint">${brl(s.plano.sobra)}</td></tr></tbody></table>
@@ -362,7 +362,18 @@ function ajustes() {
           <label style="margin-top:8px">brapi.dev (opcional) <span class="faint" id="k_BRAPI_TOKEN"></span><input name="BRAPI_TOKEN" type="password" autocomplete="off" placeholder="token gratuito"></label></form>
           <div class="actions"><button class="btn ghost" id="keysave">Salvar chaves</button><button class="btn ghost" id="ia">Diagnóstico de IA</button></div>`
           : '<div class="actions"><button class="btn ghost" id="ia">Diagnóstico de IA</button></div>'}
-        <div id="iaout" class="faint" style="margin-top:8px"></div></div>
+        <div id="iaout" class="faint" style="margin-top:8px"></div>
+        <details style="margin-top:12px" id="iacfg"><summary class="faint">Configuração do M.A.N.U.E.L.</summary>
+          <form id="cfgf" class="row" style="margin-top:10px">
+            <label>Cérebro principal<select name="provedor"><option value="claude">Claude (reserva: Gemini)</option><option value="gemini">Gemini (reserva: Claude)</option></select></label>
+            <label>Modelo Claude<input name="modeloClaude" placeholder="claude-sonnet-5-5"></label>
+            <label>Modelo Gemini<input name="modeloGemini" placeholder="auto"></label>
+            <label>Limite diário de mensagens<input name="limite_diario" type="number" min="1" max="1000"></label>
+            <label>Voz<select name="voz_motor"><option value="windows">Windows (grátis, offline)</option><option value="gemini">Gemini natural (usa a chave)</option><option value="desligada">Desligada</option></select></label>
+            <label>Voz Gemini<select name="voz_nome">${VOZES_GEMINI.map(v => `<option>${v}</option>`).join('')}</select></label>
+            <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="fala_auto" style="width:auto;min-height:0"> Falar as respostas automaticamente</label>
+          </form>
+          <div class="actions"><button class="btn ghost" id="cfgsave">Salvar configuração</button></div></details></div>
       <div class="card"><h2>Backup</h2><p class="muted">${DESK ? 'Seus dados ficam só neste computador. Faça cópias regulares.' : 'Exporta todo o razão, ativos e configuração em JSON.'}</p><div class="actions"><button class="btn ghost" id="exp">Exportar JSON</button>${DESK ? '<button class="btn ghost" id="dbbak">Copiar banco completo</button><button class="btn ghost" id="dbdir">Abrir pasta de dados</button>' : ''}</div></div>
       ${DESK ? `<div class="card"><h2>Segurança</h2><p class="muted">O app se bloqueia sozinho após 30 minutos sem uso.</p>
           <form id="pinch" class="row"><label>PIN atual<input name="atual" type="password" inputmode="numeric" maxlength="12"></label><label>Novo PIN<input name="novo" type="password" inputmode="numeric" maxlength="12"></label></form>
@@ -408,6 +419,16 @@ function ajustes() {
     busy('dbdir', () => DESK.openData());
     busy('pinsave', async () => { const pf = document.getElementById('pinch'); await api('/api/auth/pin/change', { method: 'POST', body: { atual: pf.atual.value, novo: pf.novo.value } }); pf.reset(); toast('PIN alterado.'); });
   }
+  api('/api/manuel/conversa').then(c => {
+    const cf = document.getElementById('cfgf'); if (!cf) return;
+    for (const [k, v] of Object.entries(c.config)) { const el = cf.elements[k]; if (!el) continue; if (el.type === 'checkbox') el.checked = !!v; else el.value = v; }
+  }).catch(() => {});
+  busy('cfgsave', async () => {
+    const cf = document.getElementById('cfgf');
+    const body = { provedor: cf.provedor.value, modeloClaude: cf.modeloClaude.value.trim(), modeloGemini: cf.modeloGemini.value.trim() || 'auto',
+      limite_diario: Number(cf.limite_diario.value), voz_motor: cf.voz_motor.value, voz_nome: cf.voz_nome.value, fala_auto: cf.fala_auto.checked };
+    await api('/api/manuel/config', { method: 'POST', body }); toast('Configuração do M.A.N.U.E.L. salva.');
+  });
   api('/api/audit').then(rows => { document.getElementById('aud').innerHTML = rows.slice(0, 30).map(r => `${esc(r.em)} · ${esc(r.acao)}`).join('<br>') || 'vazia'; }).catch(() => {});
 }
 
@@ -578,6 +599,144 @@ function migracao() {
   };
 }
 
+// ───────── M.A.N.U.E.L. · console ─────────
+let CONV = null, AUDIO = null;
+const VOZES_GEMINI = ['Charon', 'Orus', 'Fenrir', 'Iapetus', 'Algenib', 'Kore', 'Aoede', 'Puck'];
+function md(t) {
+  const linhas = esc(t).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`([^`]+)`/g, '<code>$1</code>').split('\n');
+  let out = '', lista = false;
+  for (const l of linhas) {
+    const m = l.match(/^\s*(?:[-•*]|\d+[.)])\s+(.*)$/);
+    if (m) { if (!lista) { out += '<ul>'; lista = true; } out += `<li>${m[1]}</li>`; continue; }
+    if (lista) { out += '</ul>'; lista = false; }
+    out += l.trim() ? `<p>${l}</p>` : '';
+  }
+  return out + (lista ? '</ul>' : '');
+}
+function descLanc(l) {
+  const tipos = { compra: 'Compra', venda: 'Venda', provento: 'Provento', aporte: 'Aporte', retirada: 'Retirada', taxa: 'Taxa', desdobramento: 'Desdobramento', grupamento: 'Grupamento', ajuste_caixa: 'Ajuste de caixa' };
+  const qtdp = l.qtd != null && l.preco != null ? `${nf(l.qtd, 0)} × ${brl(l.preco)}${l.custos ? ` + ${brl(l.custos)}` : ''}` : l.qtd != null ? `fator ${nf(l.qtd, 0)}` : brl(l.valor);
+  return `${tipos[l.tipo] || l.tipo}${l.ticker ? ' · ' + esc(l.ticker) : ''} · ${qtdp} · ${esc(String(l.data).split('-').reverse().join('/'))}${l.subtipo ? ' · ' + esc(l.subtipo) : ''}`;
+}
+function cartaoProposta(p) {
+  const ef = p.efeito || {}, po = ef.posicao;
+  const st = { pendente: '<span class="tag espera">aguardando confirmação</span>', confirmada: '<span class="tag ataque">gravada no razão</span>', recusada: '<span class="tag">recusada</span>' }[p.status];
+  return `<div class="proposta ${p.status}" data-prop="${p.id}">
+    <div class="faint">Proposta de lançamento #${p.id} ${st}</div>
+    <div><b>${descLanc(p.lancamento)}</b></div>
+    ${p.status === 'pendente' ? `<div class="diff"><b></b><b>antes</b><b>depois</b>
+      <span>Caixa</span><span class="num">${brl(ef.caixa?.antes)}</span><span class="num ${ef.caixa?.depois < 0 ? 'neg' : ''}">${brl(ef.caixa?.depois)}</span>
+      ${po ? `<span>Cotas</span><span class="num">${nf(po.qtd.antes, 2)}</span><span class="num">${nf(po.qtd.depois, 2)}</span>
+      <span>Preço médio</span><span class="num">${brl(po.preco_medio.antes)}</span><span class="num">${brl(po.preco_medio.depois)}</span>` : ''}</div>
+      ${(ef.avisos || []).map(a => `<div class="alert atencao">${esc(a)}</div>`).join('')}
+      <div class="actions"><button class="btn sm" data-conf="${p.id}">Confirmar e gravar</button><button class="btn ghost sm" data-rec="${p.id}">Recusar</button></div>` : ''}
+  </div>`;
+}
+function bolha(m) {
+  if (m.papel === 'usuario') return `<div class="msg eu"><div class="balao">${md(m.texto)}</div></div>`;
+  const meta = m.meta || {};
+  const props = (meta.propostas || []).map(id => (CONV?.propostas || []).find(p => p.id === id)).filter(Boolean);
+  const tok = meta.uso ? ((meta.uso.entrada + meta.uso.saida) / 1000).toFixed(1) + 'k tokens' : '';
+  return `<div class="msg ele"><div class="avatar" aria-hidden="true">${EMBLEM}</div><div class="balao">
+    ${(meta.ferramentas || []).length ? `<div class="ferr">${meta.ferramentas.map(e => `<span class="tag ${e.ok ? '' : 'espera'}">${esc(e.ferramenta.replace(/_/g, ' '))}${e.resumo ? ' · ' + esc(e.resumo) : ''}</span>`).join('')}</div>` : ''}
+    ${md(m.texto)}
+    ${props.map(cartaoProposta).join('')}
+    ${(meta.fontes || []).length ? `<div class="fontes"><span class="faint">Fontes:</span> ${meta.fontes.map(f => `<a href="${esc(f.url)}" target="_blank" rel="noopener noreferrer">${esc(f.titulo)}</a>`).join(' · ')}</div>` : ''}
+    <div class="rodape faint">${esc(meta.provedor || '')}${meta.modelo ? ' · ' + esc(meta.modelo) : ''}${tok ? ' · ' + tok : ''}
+      <button class="linkbtn" data-falar="${m.id ?? ''}" title="Ouvir">🔊 ouvir</button></div>
+  </div></div>`;
+}
+function falar(texto) {
+  pararFala();
+  const cfg = CONV?.config || {};
+  if (cfg.voz_motor === 'desligada') return;
+  const limpo = texto.replace(/[*_`#>]/g, '');
+  if (cfg.voz_motor === 'gemini' && CONV?.chaves?.gemini) {
+    fetch('/api/manuel/voz', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ texto: limpo }) })
+      .then(r => r.ok ? r.blob() : r.json().then(j => Promise.reject(new Error(j.erro))))
+      .then(b => { AUDIO = new Audio(URL.createObjectURL(b)); AUDIO.play(); })
+      .catch(e => { toast('Voz natural indisponível: ' + e.message + ' Usando a voz do Windows.'); falarWindows(limpo); });
+    return;
+  }
+  falarWindows(limpo);
+}
+function falarWindows(texto) {
+  if (!('speechSynthesis' in window)) return;
+  const u = new SpeechSynthesisUtterance(texto.slice(0, 3000));
+  const vs = speechSynthesis.getVoices().filter(v => /^pt(-|_)BR/i.test(v.lang));
+  u.voice = vs.find(v => /antonio/i.test(v.name)) || vs.find(v => /daniel|male|masculin/i.test(v.name)) || vs[0] || null;
+  u.lang = 'pt-BR'; u.rate = 1.02;
+  speechSynthesis.speak(u);
+}
+function pararFala() { try { speechSynthesis.cancel(); } catch {} if (AUDIO) { AUDIO.pause(); AUDIO = null; } }
+
+async function manuel() {
+  CONV = await api('/api/manuel/conversa');
+  const c = CONV, semChave = !c.chaves.claude && !c.chaves.gemini;
+  const ativo = c.config.provedor === 'gemini' ? (c.chaves.gemini ? 'Gemini' : 'Claude') : (c.chaves.claude ? 'Claude' : 'Gemini');
+  frame('manuel', `<div class="eyebrow">M.A.N.U.E.L. / Console</div><h1>Às ordens, Senhor.</h1>
+    ${semChave ? `<div class="banner">Nenhuma chave de IA configurada. <a href="#/ajustes">Cadastre a do Claude e/ou a do Gemini em Ajustes → Inteligência.</a></div>` : ''}
+    <div class="livebar">
+      <span class="chip ${semChave ? '' : 'open'}"><i class="dot ${semChave ? '' : 'on'}"></i>${semChave ? 'sem IA' : ativo + (c.chaves.claude && c.chaves.gemini ? ' + reserva' : '')}</span>
+      <span class="faint">pesquisa: ${c.chaves.gemini ? 'Gemini + Google Search' : 'indisponível (sem chave Gemini)'}</span>
+      <span class="faint">hoje: ${c.uso.chamadas}/${c.config.limite_diario} mensagens · ${((c.uso.entrada + c.uso.saida) / 1000).toFixed(1)}k tokens</span>
+      <span class="faint" style="margin-left:auto">voz: ${esc({ windows: 'Windows', gemini: 'Gemini natural', desligada: 'desligada' }[c.config.voz_motor])}</span>
+      <button class="btn ghost sm" id="parar">Parar voz</button><button class="btn ghost sm" id="limpar">Limpar conversa</button>
+    </div>
+    <div class="console">
+      <div id="thread" class="thread" aria-live="polite">${c.mensagens.length ? c.mensagens.map(bolha).join('') : `<div class="empty"><p>Pergunte sobre a carteira, peça uma simulação ou informe uma operação. Tudo o que for gravado passa pela sua confirmação.</p></div>`}</div>
+      <div class="atalhos">${['Leitura do dia da carteira', 'Onde aplico o aporte de R$ 500 deste mês?', 'Quais pelotões estão na zona de ataque e por quê?', 'Pesquise as últimas notícias e proventos anunciados do BTLG11', 'Varra as oportunidades da fase atual'].map(a => `<button class="chipbtn" data-atalho="${esc(a)}">${esc(a)}</button>`).join('')}</div>
+      <form id="cf" class="composer"><label class="sr" for="ct">Mensagem</label>
+        <textarea id="ct" name="t" rows="2" maxlength="4000" placeholder="Ex.: comprei 3 BTLG11 a 97,80 hoje · quanto falta para o próximo marco?" ${semChave ? 'disabled' : ''}></textarea>
+        <button class="btn" ${semChave ? 'disabled' : ''}>Enviar</button></form>
+      <p class="faint">M.A.N.U.E.L. analisa e organiza; não envia ordens nem é recomendação de investimento. Lançamentos só entram no razão com o seu clique.</p>
+    </div>`);
+  const th = document.getElementById('thread'); th.scrollTop = th.scrollHeight;
+  const f = document.getElementById('cf'), ta = f.t;
+  const enviar = async (texto) => {
+    texto = texto.trim(); if (!texto) return;
+    const b = f.querySelector('button'); b.disabled = true; ta.value = '';
+    th.querySelector('.empty')?.remove();
+    th.insertAdjacentHTML('beforeend', bolha({ papel: 'usuario', texto }) + `<div class="msg ele pensando" id="pens"><div class="avatar">${EMBLEM}</div><div class="balao"><span class="dots"><i></i><i></i><i></i></span> analisando a carteira…</div></div>`);
+    th.scrollTop = th.scrollHeight;
+    try {
+      const r = await api('/api/manuel/mensagem', { method: 'POST', body: { texto } });
+      CONV.propostas = (CONV.propostas || []).concat(r.propostas || []);
+      CONV.mensagens.push({ papel: 'usuario', texto }, { papel: 'manuel', texto: r.texto, meta: r.meta });
+      CONV.uso.chamadas++;
+      document.getElementById('pens')?.remove();
+      th.insertAdjacentHTML('beforeend', bolha({ papel: 'manuel', texto: r.texto, meta: r.meta }));
+      th.scrollTop = th.scrollHeight;
+      if (CONV.config.fala_auto) falar(r.texto);
+    } catch (e) {
+      document.getElementById('pens')?.remove();
+      th.insertAdjacentHTML('beforeend', `<div class="alert atencao">${esc(e.message)}</div>`);
+      ta.value = texto;
+    }
+    b.disabled = false; ta.focus();
+  };
+  f.onsubmit = (e) => { e.preventDefault(); enviar(ta.value); };
+  ta.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar(ta.value); } });
+  document.querySelectorAll('[data-atalho]').forEach(b => b.onclick = () => enviar(b.dataset.atalho));
+  document.getElementById('parar').onclick = pararFala;
+  document.getElementById('limpar').onclick = async () => { if (!confirm('Limpar a conversa? Lançamentos e propostas não são afetados.')) return; await api('/api/manuel/limpar', { method: 'POST', body: {} }); manuel(); };
+  th.addEventListener('click', async (e) => {
+    const t = e.target.closest('button'); if (!t) return;
+    if (t.dataset.falar !== undefined) { const balao = t.closest('.balao'); falar(balao.innerText.replace(/🔊 ouvir[\s\S]*$/, '')); return; }
+    const id = t.dataset.conf || t.dataset.rec; if (!id) return;
+    t.disabled = true;
+    try {
+      const r = await api(`/api/manuel/propostas/${id}/${t.dataset.conf ? 'confirmar' : 'recusar'}`, { method: 'POST', body: {} });
+      const p = CONV.propostas.find(x => String(x.id) === id); if (p) p.status = r.status;
+      t.closest('.proposta').outerHTML = cartaoProposta(p);
+      toast(r.status === 'confirmada' ? 'Lançamento gravado no razão.' : 'Proposta recusada.');
+      if (r.status === 'confirmada') load().catch(() => {});
+    } catch (err) { toast(err.message, 6000); t.disabled = false; }
+  });
+  if ('speechSynthesis' in window) speechSynthesis.getVoices();
+  ta.focus();
+}
+
 // ───────── dados e rotas ─────────
 async function load() {
   try { S = await api('/api/state'); offline = false; cacheSet(S); }
@@ -591,18 +750,18 @@ async function route(view) {
   // rota pedida explicitamente vence a do endereço (ex.: voltar ao cockpit depois de gravar)
   const alvo = (typeof view === 'string' && view) || location.hash.slice(2) || 'cockpit';
   const [name, q] = alvo.split('?');
-  const v = ['cockpit', 'radar', 'posicoes', 'registrar', 'estrategia', 'razao', 'plano', 'ajustes', 'migracao'].includes(name) ? name : 'cockpit';
+  const v = ['cockpit', 'manuel', 'radar', 'posicoes', 'registrar', 'estrategia', 'razao', 'plano', 'ajustes', 'migracao'].includes(name) ? name : 'cockpit';
   const hash = `#/${v}${q && v === name ? '?' + q : ''}`;
   if (hash !== location.hash) history.replaceState(null, '', hash);
   try {
     if (!S) await load();
-    await ({ cockpit, radar, posicoes, registrar: () => registrar(new URLSearchParams(q || '')), estrategia, razao, plano, ajustes, migracao })[v]();
+    await ({ cockpit, manuel, radar, posicoes, registrar: () => registrar(new URLSearchParams(q || '')), estrategia, razao, plano, ajustes, migracao })[v]();
     window.scrollTo(0, 0);
   } catch (e) { if (e.message !== 'Sessão expirada.') $app.innerHTML = `<div class="gate"><div class="card"><h2>Falha ao carregar</h2><p class="muted">${esc(e.message)}</p><div class="actions" style="justify-content:center"><button class="btn" id="retry">Tentar de novo</button></div></div></div>`; document.getElementById('retry')?.addEventListener('click', () => location.reload()); }
 }
 window.addEventListener('hashchange', () => { if (S || offline) route(); });
 // Atualiza o estado a cada 2 min com o app aberto e visível (cotações chegam pelo cron)
-setInterval(async () => { if (S && document.visibilityState === 'visible') { const v = (location.hash.slice(2) || 'cockpit').split('?')[0]; if (['registrar', 'radar', 'migracao'].includes(v)) return; try { await load(); if (['cockpit', 'posicoes'].includes(v)) route(); } catch {} } }, 120000);
+setInterval(async () => { if (S && document.visibilityState === 'visible') { const v = (location.hash.slice(2) || 'cockpit').split('?')[0]; if (['registrar', 'radar', 'migracao', 'manuel'].includes(v)) return; try { await load(); if (['cockpit', 'posicoes'].includes(v)) route(); } catch {} } }, 120000);
 if (!DESK && 'serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 if (DESK) {
   DESK.updateStatus().then(s => { UPD = s; });

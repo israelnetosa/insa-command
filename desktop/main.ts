@@ -13,6 +13,7 @@ import { createLock } from './lock';
 import { refreshQuotes } from '../src/market';
 import migration0001 from '../migrations/0001_init.sql';
 import migration0002 from '../migrations/0002_live.sql';
+import migration0003 from '../migrations/0003_manuel.sql';
 
 const SCHEME = 'insa';
 const ORIGIN = `${SCHEME}://app`;
@@ -181,7 +182,7 @@ app.whenReady().then(async () => {
   Menu.setApplicationMenu(null);
   await mkdir(dataDir(), { recursive: true });
   db = new LocalD1(join(dataDir(), 'insa.sqlite'));
-  db.migrate([migration0001, migration0002]);
+  db.migrate([migration0001, migration0002, migration0003]);
   loadSecrets();
   const lock = buildEnv();
   wireIpc(lock);
