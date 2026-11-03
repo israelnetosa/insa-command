@@ -16,6 +16,25 @@ Centro de comando **privado** da carteira INSA Dividend Army. É a sucessora do 
 | Peso do app | 412 KB de JS | 35 KB (12 KB comprimido) |
 | Hospedagem | Presa ao Manus | Sua conta Cloudflare (plano gratuito) |
 
+## Novidades da 1.5 · Nuvem e Android
+
+- **Nuvem própria** (Cloudflare Worker + D1, plano gratuito): o PC e o celular usam os mesmos dados.
+- **Aparelhos pareados:** o primeiro entra com o código de configuração (`INSA_SETUP_TOKEN`). Os seguintes entram com um código de 8 dígitos gerado num aparelho já conectado, que vale 10 minutos e uma única vez. Cada aparelho pode ser desconectado em Ajustes.
+- **App Android (APK)** compilado pelo GitHub e anexado ao release de cada versão. As telas novas chegam pela nuvem, sem reinstalar.
+- **Windows → nuvem:** em Ajustes → Nuvem e celular, envia o razão local e passa a abrir a nuvem. Os dados locais ficam como cópia.
+
+### Ligar a nuvem (uma vez)
+
+1. Crie uma conta grátis em cloudflare.com e abra **Workers & Pages** uma vez, para criar o seu subdomínio `workers.dev`.
+2. Em **My Profile → API Tokens**, crie um token com o modelo "Edit Cloudflare Workers" e acrescente a permissão **D1: Edit**.
+3. No GitHub, em `insa-command` → **Settings → Secrets and variables → Actions**, crie estes segredos:
+   - `CLOUDFLARE_API_TOKEN`: o token do passo 2.
+   - `CLOUDFLARE_ACCOUNT_ID`: o ID da conta, que fica à direita no painel da Cloudflare.
+   - `INSA_SETUP_TOKEN`: uma senha longa inventada por você. Serve para conectar o primeiro aparelho e para proteger a chave do APK.
+   - `GEMINI_API_KEY`: obrigatório.
+   - `ANTHROPIC_API_KEY` e `BRAPI_TOKEN`: opcionais.
+4. Em **Actions → Nuvem e Android → Run workflow**, rode o workflow. Ele publica a nuvem, mostra o endereço e anexa o APK ao release.
+
 ## Novidades da 1.3 · HUD tático
 
 - **Visual novo:**

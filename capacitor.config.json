@@ -1,0 +1,8 @@
+{
+  "appId": "com.insa.command",
+  "appName": "INSA Command",
+  "webDir": "android-shell",
+  "backgroundColor": "#02070c",
+  "server": { "url": "https://SUBSTITUIDO-NO-BUILD.workers.dev", "cleartext": false, "androidScheme": "https" },
+  "android": { "allowMixedContent": false, "backgroundColor": "#02070c" }
+}

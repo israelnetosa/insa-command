@@ -28,6 +28,7 @@ export interface Env {
 const SESSION_COOKIE = '__Host-insa_s';
 const CHALLENGE_COOKIE = '__Host-insa_c';
 const SESSION_DAYS = 30;
+const DEVICE_DAYS = 365;
 
 export const enc = new TextEncoder();
 export async function sha256(s: string) {
@@ -65,16 +66,26 @@ async function audit(env: Env, acao: string, dados?: unknown) {
 }
 
 export async function isConfigured(env: Env) {
-  const r = await env.DB.prepare('SELECT COUNT(*) AS n FROM credentials').first<{ n: number }>();
+  const r = await env.DB.prepare(`SELECT (SELECT COUNT(*) FROM credentials) + (SELECT COUNT(*) FROM settings WHERE chave = 'dono_configurado') AS n`).first<{ n: number }>();
   return (r?.n ?? 0) > 0;
 }
 
+/** Token da sessão: cookie (navegador/celular) ou cabeçalho Authorization: Bearer (app de Windows falando com a nuvem). */
+function tokenDaRequisicao(req: Request) {
+  const a = req.headers.get('Authorization') ?? '';
+  if (a.startsWith('Bearer ')) return a.slice(7).trim() || null;
+  return getCookie(req, SESSION_COOKIE);
+}
+
 export async function currentSession(req: Request, env: Env) {
-  const tok = getCookie(req, SESSION_COOKIE);
+  const tok = tokenDaRequisicao(req);
   if (!tok) return null;
-  const row = await env.DB.prepare('SELECT token_hash, expires_at FROM sessions WHERE token_hash = ?')
-    .bind(await sha256(tok)).first<{ token_hash: string; expires_at: number }>();
+  const row = await env.DB.prepare('SELECT token_hash, expires_at, id, ultimo_uso FROM sessions WHERE token_hash = ?')
+    .bind(await sha256(tok)).first<{ token_hash: string; expires_at: number; id: string | null; ultimo_uso: number | null }>();
   if (!row || row.expires_at < Date.now()) return null;
+  // registra o uso no máximo a cada 10 min (evita escrita a cada requisição)
+  if (!row.ultimo_uso || Date.now() - row.ultimo_uso > 600_000)
+    await env.DB.prepare('UPDATE sessions SET ultimo_uso = ? WHERE token_hash = ?').bind(Date.now(), row.token_hash).run();
   return row;
 }
 
@@ -98,16 +109,23 @@ async function takeChallenge(req: Request, env: Env, kind: 'register' | 'login')
   return row.challenge;
 }
 
-async function newSession(req: Request, env: Env) {
+async function criarSessao(req: Request, env: Env, dias: number, rotulo?: string) {
   const tok = randomToken();
   const now = Date.now();
   await env.DB.batch([
     env.DB.prepare('DELETE FROM sessions WHERE expires_at < ?').bind(now),
-    env.DB.prepare('INSERT INTO sessions (token_hash, created_at, expires_at, user_agent) VALUES (?, ?, ?, ?)')
-      .bind(await sha256(tok), now, now + SESSION_DAYS * 86400_000, (req.headers.get('User-Agent') ?? '').slice(0, 200)),
+    env.DB.prepare('INSERT INTO sessions (token_hash, created_at, expires_at, user_agent, id, rotulo, ultimo_uso) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .bind(await sha256(tok), now, now + dias * 86400_000, (req.headers.get('User-Agent') ?? '').slice(0, 200), randomToken(9), (rotulo ?? '').slice(0, 60) || null, now),
   ]);
-  return cookie(SESSION_COOKIE, tok, SESSION_DAYS * 86400);
+  return { tok, cookie: cookie(SESSION_COOKIE, tok, dias * 86400) };
 }
+async function newSession(req: Request, env: Env) { return (await criarSessao(req, env, SESSION_DAYS)).cookie; }
+
+async function tentativasRecentes(env: Env, acao: string) {
+  const r = await env.DB.prepare(`SELECT COUNT(*) AS n FROM audit WHERE acao = ? AND em > datetime('now','-1 hour')`).bind(acao).first<{ n: number }>();
+  return r?.n ?? 0;
+}
+const rotuloDe = (b: any, req: Request) => String(b.rotulo ?? '').trim().slice(0, 60) || (/android/i.test(req.headers.get('User-Agent') ?? '') ? 'Celular Android' : 'Aparelho');
 
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json; charset=utf-8', ...headers } });
@@ -197,6 +215,63 @@ export async function handleAuth(req: Request, env: Env, path: string): Promise<
     headers.append('Set-Cookie', cookie(CHALLENGE_COOKIE, '', 0));
     headers.append('Set-Cookie', await newSession(req, env));
     return new Response(JSON.stringify({ ok: true }), { headers });
+  }
+
+  // ───────── aparelhos pareados ─────────
+  // 1º aparelho: código de configuração (segredo SETUP_TOKEN), só enquanto não existir dono.
+  if (path === '/api/auth/dispositivo/configurar' && req.method === 'POST') {
+    const b: any = await req.json().catch(() => ({}));
+    if (await isConfigured(env)) return json({ erro: 'A nuvem já tem dono. Use um código de pareamento gerado num aparelho conectado.' }, 409);
+    if (!env.SETUP_TOKEN) return json({ erro: 'SETUP_TOKEN não configurado no servidor.' }, 500);
+    if (await tentativasRecentes(env, 'setup_token_invalido') >= 5) return json({ erro: 'Muitas tentativas. Aguarde 1 hora.' }, 429);
+    if (!timingSafeEqual(String(b.setupToken ?? ''), env.SETUP_TOKEN)) { await audit(env, 'setup_token_invalido'); return json({ erro: 'Código de configuração inválido.' }, 401); }
+    const s = await criarSessao(req, env, DEVICE_DAYS, rotuloDe(b, req));
+    await env.DB.prepare(`INSERT OR REPLACE INTO settings (chave, valor) VALUES ('dono_configurado', ?)`).bind(JSON.stringify(new Date().toISOString())).run();
+    await audit(env, 'dispositivo_configurado', { rotulo: rotuloDe(b, req) });
+    return json({ ok: true, ...(new URL(req.url).searchParams.get('token') === '1' ? { token: s.tok } : {}) }, 200, { 'Set-Cookie': s.cookie });
+  }
+
+  // Aparelho conectado gera um código de 8 dígitos, válido por 10 minutos e de uso único.
+  if (path === '/api/auth/dispositivo/codigo' && req.method === 'POST') {
+    if (!(await currentSession(req, env))) return json({ erro: 'Não autorizado.' }, 401);
+    const n = crypto.getRandomValues(new Uint32Array(1))[0] % 100_000_000;
+    const codigo = String(n).padStart(8, '0');
+    const expira = Date.now() + 10 * 60_000;
+    await env.DB.batch([
+      env.DB.prepare('DELETE FROM pareamentos WHERE expira < ?').bind(Date.now()),
+      env.DB.prepare('INSERT OR REPLACE INTO pareamentos (codigo_hash, expira) VALUES (?, ?)').bind(await sha256(codigo), expira),
+    ]);
+    await audit(env, 'codigo_pareamento_gerado');
+    return json({ codigo, expira });
+  }
+
+  // Aparelho novo entra com o código. Limite global de 10 erros por hora (8 dígitos = 100 milhões de combinações).
+  if (path === '/api/auth/dispositivo/parear' && req.method === 'POST') {
+    const b: any = await req.json().catch(() => ({}));
+    if (await tentativasRecentes(env, 'pareamento_invalido') >= 10) return json({ erro: 'Muitas tentativas. Aguarde 1 hora.' }, 429);
+    const codigo = String(b.codigo ?? '').replace(/\D/g, '');
+    const row = codigo.length === 8
+      ? await env.DB.prepare('DELETE FROM pareamentos WHERE codigo_hash = ? RETURNING expira').bind(await sha256(codigo)).first<{ expira: number }>()
+      : null;
+    if (!row || row.expira < Date.now()) { await audit(env, 'pareamento_invalido'); return json({ erro: 'Código inválido ou expirado. Gere um novo no aparelho conectado.' }, 401); }
+    const s = await criarSessao(req, env, DEVICE_DAYS, rotuloDe(b, req));
+    await audit(env, 'dispositivo_pareado', { rotulo: rotuloDe(b, req) });
+    return json({ ok: true, ...(new URL(req.url).searchParams.get('token') === '1' ? { token: s.tok } : {}) }, 200, { 'Set-Cookie': s.cookie });
+  }
+
+  if (path === '/api/auth/dispositivos' && req.method === 'GET') {
+    const atual = await currentSession(req, env);
+    if (!atual) return json({ erro: 'Não autorizado.' }, 401);
+    const r = await env.DB.prepare('SELECT id, rotulo, user_agent, created_at, ultimo_uso, expires_at FROM sessions WHERE expires_at > ? ORDER BY ultimo_uso DESC').bind(Date.now()).all<any>();
+    return json(r.results.map(x => ({ ...x, atual: x.id === atual.id })));
+  }
+
+  const rev = path.match(/^\/api\/auth\/dispositivos\/([\w-]{6,20})\/revogar$/);
+  if (rev && req.method === 'POST') {
+    if (!(await currentSession(req, env))) return json({ erro: 'Não autorizado.' }, 401);
+    await env.DB.prepare('DELETE FROM sessions WHERE id = ?').bind(rev[1]).run();
+    await audit(env, 'dispositivo_revogado', { id: rev[1] });
+    return json({ ok: true });
   }
 
   if (path === '/api/auth/logout' && req.method === 'POST') {

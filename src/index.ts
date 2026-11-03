@@ -176,7 +176,7 @@ async function api(req: Request, env: Env, url: URL): Promise<Response> {
 
   if (path === '/api/session') {
     if (desk) return json(await desk.session());
-    return json({ autenticado: !!(await currentSession(req, env)), configurado: await isConfigured(env) });
+    return json({ autenticado: !!(await currentSession(req, env)), configurado: await isConfigured(env), nuvem: true });
   }
   const auth = desk ? await desk.handle(req, path) : await handleAuth(req, env, path);
   if (auth) return auth;
@@ -405,6 +405,33 @@ async function api(req: Request, env: Env, url: URL): Promise<Response> {
     await audit(env, 'migracao_importada', { data_base: mig.data_base, posicoes: mig.posicoes.length, caixa: mig.caixa, anulados: existentes, backup });
     await refreshQuotes(env.DB, assets.map((a: any) => a.ticker), env.BRAPI_TOKEN).catch(() => null);
     return json({ ok: true, lancamentos: movs.length, ativos: assets.length, anulados: existentes, backup });
+  }
+
+  // Recebe o razão completo de outro aparelho (ex.: o PC indo para a nuvem). Só com o razão daqui vazio.
+  if (path === '/api/admin/import-completo' && req.method === 'POST') {
+    const b: any = await req.json().catch(() => null);
+    if (!b || !Array.isArray(b.movements) || !Array.isArray(b.assets) || typeof b.settings !== 'object') return json({ erro: 'Formato inválido.' }, 400);
+    const n = await env.DB.prepare('SELECT COUNT(*) AS n FROM movements WHERE anulado = 0').first<{ n: number }>();
+    if ((n?.n ?? 0) > 0) return json({ erro: 'A nuvem já tem lançamentos. Nada foi importado.', existentes: n?.n }, 409);
+    const TIPOS = new Set(['saldo_inicial', 'compra', 'venda', 'provento', 'aporte', 'retirada', 'desdobramento', 'grupamento', 'taxa', 'ajuste_caixa']);
+    const movs = b.movements.filter((m: any) => TIPOS.has(m.tipo) && /^\d{4}-\d{2}-\d{2}$/.test(m.data)).slice(0, 20000);
+    try { replay(movs); } catch (e) { return json({ erro: 'Razão recebido é inválido: ' + (e as Error).message }, 400); }
+    const s = (v: unknown, max = 280) => (v == null ? null : String(v).slice(0, max));
+    const num = (v: unknown) => (v == null || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
+    const BLOQUEADAS = new Set(['pin', 'update_feed', 'dono_configurado']);
+    await env.DB.batch([
+      ...b.assets.filter((a: any) => /^[A-Z0-9]{4,7}$/.test(a.ticker)).map((a: any) => env.DB.prepare(
+        `INSERT OR REPLACE INTO assets (ticker, nome, tipo, setor, camada, dy_ref, div_mes_cota, mensal, teto_bazin, hi52, lo52, ativo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).bind(a.ticker, s(a.nome, 80), s(a.tipo, 40), s(a.setor, 60), s(a.camada, 60), num(a.dy_ref), num(a.div_mes_cota), a.mensal ? 1 : 0, num(a.teto_bazin), num(a.hi52), num(a.lo52), a.ativo === 0 ? 0 : 1)),
+      ...movs.map((m: any) => env.DB.prepare(
+        `INSERT INTO movements (data, tipo, ticker, qtd, preco, valor, custos, subtipo, estimado, nota, origem, criado_em, anulado) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')), ?)`,
+      ).bind(m.data, m.tipo, s(m.ticker, 7), num(m.qtd), num(m.preco), num(m.valor), num(m.custos) ?? 0, s(m.subtipo, 20), m.estimado ? 1 : 0, s(m.nota), s(m.origem, 40) ?? 'importacao', s(m.criado_em, 30), m.anulado ? 1 : 0)),
+      ...Object.entries(b.settings).filter(([k]) => !BLOQUEADAS.has(k) && /^[a-z_]{2,40}$/.test(k))
+        .map(([k, v]) => env.DB.prepare('INSERT OR REPLACE INTO settings (chave, valor) VALUES (?, ?)').bind(k, JSON.stringify(v))),
+    ]);
+    await audit(env, 'importacao_completa', { lancamentos: movs.length, ativos: b.assets.length });
+    await refreshQuotes(env.DB, b.assets.map((a: any) => a.ticker), env.BRAPI_TOKEN).catch(() => null);
+    return json({ ok: true, lancamentos: movs.length, ativos: b.assets.length });
   }
 
   if (path === '/api/export' && req.method === 'GET') {

@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('insaDesktop', {
   openData: () => ipcRenderer.invoke('insa:data:open'),
   backup: () => ipcRenderer.invoke('insa:data:backup'),
   lock: () => ipcRenderer.invoke('insa:lock'),
+  conectarNuvem: (url, codigo) => ipcRenderer.invoke('insa:nuvem:conectar', url, codigo),
   procurarMigracao: () => ipcRenderer.invoke('insa:migracao:procurar'),
   onVisivel: (cb) => { const h = (_e, v) => cb(v); ipcRenderer.on('insa:visivel', h); return () => ipcRenderer.removeListener('insa:visivel', h); },
   onUpdate: (cb) => { const h = (_e, s) => cb(s); ipcRenderer.on('insa:update', h); return () => ipcRenderer.removeListener('insa:update', h); },

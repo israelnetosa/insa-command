@@ -1,11 +1,11 @@
 // INSA Command · interface (PWA). Sem frameworks, sem rastreadores.
-import { startRegistration, startAuthentication, browserSupportsWebAuthn } from '@simplewebauthn/browser';
 
 const $app = document.getElementById('app');
 const CACHE_KEY = 'insa_state_v1';
 let S = null;              // estado atual vindo do servidor
 let offline = false;
-const DESK = window.insaDesktop || null;   // presente só no app de Windows
+const DESK = window.insaDesktop || null;   // presente só no app de Windows em modo local
+const SHELL = window.insaShell || null;    // presente no app de Windows em modo nuvem (só atualizações)
 let UPD = null;                            // último estado de atualização
 
 // ───────── utilidades ─────────
@@ -47,37 +47,26 @@ async function gate() {
   try { sess = await api('/api/session'); } catch { sess = { autenticado: false, configurado: true }; }
   if (sess.autenticado) return route(location.hash.slice(2) || 'cockpit');
   if (sess.desktop) return pinGate(sess);
-  const suporta = browserSupportsWebAuthn();
-  $app.innerHTML = `<div class="gate"><div class="card">${EMBLEM.replace('<svg', '<svg class="emb"')}
-    <div class="eyebrow">INSA · Centro de Comando</div>
-    <h1 style="margin-bottom:6px">${sess.configurado ? 'Identifique-se, Senhor.' : 'Primeira configuração'}</h1>
-    <p class="muted">${sess.configurado ? 'Acesso exclusivo do dono, por passkey (biometria ou chave do dispositivo).' : 'Crie a passkey do dono. Use o código de configuração definido no servidor.'}</p>
-    ${!suporta ? '<p class="banner">Este navegador não suporta passkeys.</p>' : ''}
-    ${sess.configurado
-      ? `<div class="actions" style="justify-content:center"><button class="btn" id="entrar" ${suporta ? '' : 'disabled'}>Entrar com passkey</button></div>`
-      : `<form id="setup"><label>Código de configuração<input name="token" type="password" autocomplete="off" required></label>
-         <label style="margin-top:10px">Nome deste dispositivo<input name="label" value="${esc(navigator.platform || 'Dispositivo')}" maxlength="60"></label>
-         <div class="actions"><button class="btn" ${suporta ? '' : 'disabled'}>Criar passkey do dono</button></div></form>`}
+  const novo = !sess.configurado;
+  const rotuloPadrao = /android/i.test(navigator.userAgent) ? 'Celular Android' : /windows/i.test(navigator.userAgent) ? 'PC Windows' : 'Aparelho';
+  $app.innerHTML = `<div class="gate"><div class="card"><div class="mira">${EMBLEM.replace('<svg', '<svg class="emb"')}</div>
+    <div class="eyebrow" style="justify-content:center">INSA / Centro de comando</div>
+    <h1 style="margin-bottom:6px">${novo ? 'Primeira conexão' : 'Conectar este aparelho'}</h1>
+    <p class="muted">${novo ? 'Digite o código de configuração da sua nuvem (o INSA_SETUP_TOKEN que você criou no GitHub).' : 'Num aparelho já conectado, abra Ajustes → Aparelhos → Gerar código, e digite os 8 dígitos aqui.'}</p>
+    <form id="parf">
+      ${novo ? '<label>Código de configuração<input name="cod" type="password" autocomplete="off" required></label>'
+        : '<label>Código de pareamento<input name="cod" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 ]{8,10}" maxlength="10" required placeholder="00000000"></label>'}
+      <label style="margin-top:10px">Nome deste aparelho<input name="rotulo" value="${esc(rotuloPadrao)}" maxlength="60"></label>
+      <div class="actions"><button class="btn" style="width:100%">${novo ? 'Configurar e entrar' : 'Conectar'}</button></div></form>
     <p class="faint" id="msg" role="alert" style="margin-top:14px"></p></div></div>`;
-  const msg = (t) => { document.getElementById('msg').textContent = t; };
-  document.getElementById('entrar')?.addEventListener('click', async (e) => {
-    e.target.disabled = true; msg('');
+  const f = document.getElementById('parf'); f.cod.focus();
+  f.onsubmit = async (e) => {
+    e.preventDefault(); const b = f.querySelector('button'); const msg = document.getElementById('msg'); msg.textContent = ''; b.disabled = true;
     try {
-      const opts = await api('/api/auth/login/options', { method: 'POST', body: {} });
-      const cred = await startAuthentication({ optionsJSON: opts });
-      await api('/api/auth/login/verify', { method: 'POST', body: { credential: cred } });
-      route('cockpit');
-    } catch (err) { msg(err.name === 'NotAllowedError' ? 'Operação cancelada.' : err.message); e.target.disabled = false; }
-  });
-  document.getElementById('setup')?.addEventListener('submit', async (e) => {
-    e.preventDefault(); const f = new FormData(e.target); const b = e.target.querySelector('button'); b.disabled = true; msg('');
-    try {
-      const opts = await api('/api/auth/register/options', { method: 'POST', body: { setupToken: f.get('token') } });
-      const cred = await startRegistration({ optionsJSON: opts });
-      await api('/api/auth/register/verify', { method: 'POST', body: { credential: cred, deviceLabel: f.get('label') } });
-      route('cockpit');
-    } catch (err) { msg(err.name === 'NotAllowedError' ? 'Operação cancelada.' : err.message); b.disabled = false; }
-  });
+      await api(novo ? '/api/auth/dispositivo/configurar' : '/api/auth/dispositivo/parear', { method: 'POST', body: novo ? { setupToken: f.cod.value, rotulo: f.rotulo.value } : { codigo: f.cod.value, rotulo: f.rotulo.value } });
+      S = null; await boot(); route('cockpit');
+    } catch (err) { msg.textContent = err.message; f.cod.value = ''; f.cod.focus(); b.disabled = false; }
+  };
 }
 
 // Portão do app de Windows: PIN local
@@ -114,7 +103,7 @@ async function boot() {
 }
 
 function updBanner() {
-  if (!UPD || UPD.estado !== 'pronta') return '';
+  if (!UPD || UPD.estado !== 'pronta' || !(DESK || SHELL)) return '';
   return `<div class="banner" style="display:flex;gap:12px;align-items:center;justify-content:space-between;color:var(--cyan);border-color:var(--line2);background:var(--panel)">
     <span>Nova versão ${esc(UPD.versao)} pronta para instalar.</span><button class="btn" id="updnow" style="min-height:34px;padding:4px 14px">Reiniciar e atualizar</button></div>`;
 }
@@ -139,7 +128,7 @@ function frame(view, inner) {
   <nav class="tabs" aria-label="Seções">${NAV.filter(n => !['razao', 'plano', 'registrar'].includes(n[0])).map(([id, , t, i]) => `<a href="#/${id}" class="${view === id ? 'on' : ''}"><i>${i}</i>${t}</a>`).join('')}</nav>`;
   tick();
   const ht = document.getElementById('hudtop'); if (ht) document.documentElement.style.setProperty('--topo', ht.offsetHeight + 'px');
-  document.getElementById('updnow')?.addEventListener('click', () => DESK.installUpdate());
+  document.getElementById('updnow')?.addEventListener('click', () => (DESK || SHELL).installUpdate());
 }
 // Faixa de cotações: posições + referências do radar (quando já carregadas). Lista duplicada para o laço contínuo.
 function fita() {
@@ -457,7 +446,10 @@ function ajustes() {
         <details style="margin-top:12px"><summary class="faint">Canal de atualização</summary>
           <form id="feedf" class="row" style="margin-top:10px"><label>Usuário GitHub<input name="owner" placeholder="ex.: israelneto"></label><label>Repositório<input name="repo" placeholder="ex.: insa-command"></label></form>
           <div class="actions"><button class="btn ghost" id="feedsave">Salvar canal</button></div></details></div>`
-      : `<div class="card"><h2>Dispositivos</h2><p class="muted">Adicione a passkey do celular ou de outro computador.</p><div class="actions"><button class="btn ghost" id="dev">Adicionar este dispositivo</button></div></div>`}
+      : `<div class="card"><h2>Aparelhos</h2><p class="muted">Para conectar o celular ou outro PC, gere um código e digite-o no aparelho novo. Vale 10 minutos e uma única vez.</p>
+          <div class="actions"><button class="btn" id="gerarcod">Gerar código</button></div><div id="codout" style="margin-top:10px"></div>
+          <div id="aparelhos" class="faint" style="margin-top:12px">Carregando…</div>
+          ${SHELL ? '<div class="actions"><button class="btn ghost" id="sairnuvem">Voltar este PC ao modo local</button></div>' : ''}</div>`}
       <div class="card"><h2>Inteligência</h2><p class="muted">${DESK ? 'Chaves guardadas cifradas pelo Windows, só neste computador. Deixe em branco para manter a atual.' : 'Verifica se as chaves do Claude e do Gemini estão configuradas e respondendo. As chaves nunca saem do servidor.'}</p>
         ${DESK ? `<form id="keysf"><label>Google AI (Gemini) <span class="faint" id="k_GEMINI_API_KEY"></span><input name="GEMINI_API_KEY" type="password" autocomplete="off" placeholder="cole a chave"></label>
           <label style="margin-top:8px">Anthropic (Claude) <span class="faint" id="k_ANTHROPIC_API_KEY"></span><input name="ANTHROPIC_API_KEY" type="password" autocomplete="off" placeholder="sk-ant-…"></label>
@@ -477,6 +469,10 @@ function ajustes() {
           </form>
           <div class="actions"><button class="btn ghost" id="cfgsave">Salvar configuração</button></div></details></div>
       <div class="card"><h2>Backup</h2><p class="muted">${DESK ? 'Seus dados ficam só neste computador. Faça cópias regulares.' : 'Exporta todo o razão, ativos e configuração em JSON.'}</p><div class="actions"><button class="btn ghost" id="exp">Exportar JSON</button>${DESK ? '<button class="btn ghost" id="dbbak">Copiar banco completo</button><button class="btn ghost" id="dbdir">Abrir pasta de dados</button>' : ''}</div></div>
+      ${DESK ? `<div class="card"><h2>Nuvem e celular</h2><p class="muted">Envia a sua carteira para a sua nuvem (Cloudflare) e passa a usar os mesmos dados no PC e no celular. Os dados locais ficam guardados como cópia.</p>
+          <form id="nuvemf"><label>Endereço da nuvem<input name="url" type="url" placeholder="https://insa-command.SEU-NOME.workers.dev" required></label>
+            <label style="margin-top:8px">Código de configuração (1ª vez) ou código de pareamento<input name="cod" type="password" autocomplete="off" required></label></form>
+          <div class="actions"><button class="btn" id="nuvemok">Conectar e enviar meus dados</button></div><div id="nuvemtx" class="faint" style="margin-top:8px"></div></div>` : ''}
       ${DESK ? `<div class="card"><h2>Segurança</h2><p class="muted">O app se bloqueia sozinho após 30 minutos sem uso.</p>
           <form id="pinch" class="row"><label>PIN atual<input name="atual" type="password" inputmode="numeric" maxlength="12"></label><label>Novo PIN<input name="novo" type="password" inputmode="numeric" maxlength="12"></label></form>
           <div class="actions"><button class="btn ghost" id="pinsave">Trocar PIN</button><button class="btn" id="out">Bloquear agora</button></div></div>`
@@ -490,12 +486,23 @@ function ajustes() {
     catch (err) { toast('Arquivo inválido: ' + err.message); }
   });
   busy('cot', async () => { const r = await api('/api/market/refresh', { method: 'POST', body: {} }); toast(`${r.atualizadas} cotações atualizadas${r.falharam.length ? `, falharam: ${r.falharam.join(', ')}` : ''}.`); await load(); });
-  busy('dev', async () => {
-    const opts = await api('/api/auth/register/options', { method: 'POST', body: {} });
-    const cred = await startRegistration({ optionsJSON: opts });
-    await api('/api/auth/register/verify', { method: 'POST', body: { credential: cred, deviceLabel: navigator.platform || 'Dispositivo' } });
-    toast('Dispositivo adicionado.');
+  const listarAparelhos = () => api('/api/auth/dispositivos').then(l => {
+    const el = document.getElementById('aparelhos'); if (!el) return;
+    el.innerHTML = l.map(a => `<div style="display:flex;gap:10px;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line)">
+      <span><b style="color:var(--tx)">${esc(a.rotulo || 'Aparelho')}</b>${a.atual ? ' <span class="tag ataque">este</span>' : ''}<br>último uso ${a.ultimo_uso ? new Date(a.ultimo_uso).toLocaleString('pt-BR') : '—'}</span>
+      ${a.atual ? '' : `<button class="btn danger sm" data-rev="${esc(a.id)}">Desconectar</button>`}</div>`).join('') || 'Nenhum aparelho.';
+    el.querySelectorAll('[data-rev]').forEach(b => b.onclick = async () => { if (!confirm('Desconectar este aparelho? Ele precisará de um novo código para voltar.')) return; await api(`/api/auth/dispositivos/${b.dataset.rev}/revogar`, { method: 'POST', body: {} }); listarAparelhos(); });
+  }).catch(() => {});
+  if (!DESK) listarAparelhos();
+  busy('gerarcod', async () => {
+    const r = await api('/api/auth/dispositivo/codigo', { method: 'POST', body: {} });
+    const el = document.getElementById('codout');
+    const fim = r.expira; const pinta = () => { const s = Math.max(0, Math.round((fim - Date.now()) / 1000));
+      el.innerHTML = s ? `<div class="codigo-par">${esc(r.codigo.slice(0, 4))} ${esc(r.codigo.slice(4))}</div><div class="faint">expira em ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')} · use no aparelho novo, em "Conectar este aparelho"</div>` : '<span class="faint">Código expirado. Gere outro.</span>';
+      if (s && document.body.contains(el)) setTimeout(pinta, 1000); };
+    pinta();
   });
+  busy('sairnuvem', async () => { if (confirm('Este PC volta a usar os dados locais (os da nuvem continuam lá). Continuar?')) await SHELL.sairDaNuvem(); });
   busy('ia', async () => {
     const r = await api('/api/ia/status');
     document.getElementById('iaout').innerHTML = Object.entries(r).map(([k, v]) => `${esc(k)}: <b class="${v.ok ? 'pos' : 'neg'}">${esc(v.ok ? 'ok' : v.erro)}</b>${v.ms ? ` · ${v.ms} ms` : ''}`).join('<br>');
@@ -517,6 +524,12 @@ function ajustes() {
     busy('keysave', async () => { const kf = document.getElementById('keysf'); let n = 0;
       for (const el of kf.querySelectorAll('input')) if (el.value.trim()) { await DESK.setKey(el.name, el.value.trim()); el.value = ''; n++; }
       toast(n ? `${n} chave(s) salva(s).` : 'Nada para salvar.'); ajustes(); });
+    busy('nuvemok', async () => {
+      const nf = document.getElementById('nuvemf'); if (!nf.reportValidity()) return;
+      const tx = document.getElementById('nuvemtx'); tx.textContent = 'Conectando à nuvem…';
+      try { const r = await DESK.conectarNuvem(nf.url.value.trim(), nf.cod.value.trim()); tx.textContent = r.mensagem; }
+      catch (e) { tx.textContent = e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''); }
+    });
     busy('dbbak', async () => { if (await DESK.backup()) toast('Cópia do banco salva.'); });
     busy('dbdir', () => DESK.openData());
     busy('pinsave', async () => { const pf = document.getElementById('pinch'); await api('/api/auth/pin/change', { method: 'POST', body: { atual: pf.atual.value, novo: pf.novo.value } }); pf.reset(); toast('PIN alterado.'); });
@@ -892,7 +905,12 @@ async function route(view) {
 window.addEventListener('hashchange', () => { if (S || offline) route(); });
 // Atualiza o estado a cada 2 min com o app aberto e visível (cotações chegam pelo cron)
 setInterval(async () => { if (S && document.visibilityState === 'visible') { const v = (location.hash.slice(2) || 'cockpit').split('?')[0]; if (['registrar', 'radar', 'migracao', 'manuel'].includes(v)) return; try { await load(); if (['cockpit', 'posicoes'].includes(v)) route(); } catch {} } }, 120000);
-if (!DESK && 'serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+if (!DESK && !SHELL && 'serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+if (SHELL) {
+  SHELL.updateStatus().then(s => { UPD = s; });
+  SHELL.onUpdate((s) => { const antes = UPD?.estado; UPD = s; if (s.estado === 'pronta' && antes !== 'pronta' && S) { toast(s.texto, 6000); route(); } });
+  SHELL.onVisivel?.((v) => document.documentElement.classList.toggle('pausado', !v));
+}
 if (DESK) {
   DESK.onVisivel?.((v) => document.documentElement.classList.toggle('pausado', !v));
   DESK.updateStatus().then(s => { UPD = s; });

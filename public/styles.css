@@ -358,3 +358,4 @@ html.pausado *, html.pausado *::before, html.pausado *::after { animation-play-s
 .sensor-lista { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 8px 22px; }
 .sensor-linha { display: grid; grid-template-columns: 64px 1fr; gap: 10px; align-items: center; }
 .sensor-linha .tk { font: 700 14px var(--head); letter-spacing: .08em; }
+.codigo-par { font: 700 40px/1.1 var(--head); letter-spacing: .3em; color: var(--holo); text-shadow: 0 0 14px var(--holo-2); }

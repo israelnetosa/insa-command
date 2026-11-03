@@ -1,0 +1,129 @@
+# Publica a nuvem (Cloudflare Worker + D1) e compila o app Android apontando para ela.
+# Segredos que o dono cria no GitHub (Settings → Secrets and variables → Actions):
+#   CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, INSA_SETUP_TOKEN, GEMINI_API_KEY
+#   opcionais: ANTHROPIC_API_KEY, BRAPI_TOKEN
+# Nenhum dado de carteira passa por aqui.
+name: Nuvem e Android
+on:
+  push:
+    branches: [main]
+    paths: ['src/**', 'web/**', 'public/**', 'migrations/**', 'wrangler.jsonc', 'android/**', 'capacitor.config.json', 'package.json', '.github/workflows/nuvem-android.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: nuvem-android
+  cancel-in-progress: false
+jobs:
+  nuvem:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      url: ${{ steps.deploy.outputs.url }}
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Conferir segredos
+        id: ok
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::notice::Nuvem ainda não configurada: crie os segredos CLOUDFLARE_API_TOKEN e CLOUDFLARE_ACCOUNT_ID."
+            echo "seguir=nao" >> "$GITHUB_OUTPUT"
+          else echo "seguir=sim" >> "$GITHUB_OUTPUT"; fi
+      - if: steps.ok.outputs.seguir == 'sim'
+        uses: actions/setup-node@v5
+        with: { node-version: 22, cache: npm }
+      - if: steps.ok.outputs.seguir == 'sim'
+        run: npm ci && npm test && npm run build:web
+      - name: Banco D1 (cria na primeira vez)
+        if: steps.ok.outputs.seguir == 'sim'
+        run: |
+          id=$(npx wrangler d1 list --json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const l=JSON.parse(s);const d=l.find(x=>x.name==="insa-command");process.stdout.write(d?d.uuid:"")})')
+          if [ -z "$id" ]; then
+            npx wrangler d1 create insa-command
+            id=$(npx wrangler d1 list --json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const l=JSON.parse(s);process.stdout.write(l.find(x=>x.name==="insa-command").uuid)})')
+          fi
+          sed -i "s/COLE_AQUI_O_ID_DO_D1/$id/" wrangler.jsonc
+          npx wrangler d1 migrations apply insa-command --remote
+      - name: Publicar a nuvem
+        id: deploy
+        if: steps.ok.outputs.seguir == 'sim'
+        run: |
+          npx wrangler deploy 2>&1 | tee deploy.log
+          url=$(grep -oE 'https://[a-zA-Z0-9.-]+\.workers\.dev' deploy.log | head -1)
+          test -n "$url" || { echo "::error::Não achei o endereço workers.dev. Abra o painel Workers da Cloudflare uma vez para criar o seu subdomínio."; exit 1; }
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "### Nuvem publicada: $url" >> "$GITHUB_STEP_SUMMARY"
+      - name: Segredos da nuvem
+        if: steps.ok.outputs.seguir == 'sim'
+        env:
+          SETUP_TOKEN: ${{ secrets.INSA_SETUP_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          BRAPI_TOKEN: ${{ secrets.BRAPI_TOKEN }}
+        run: |
+          node -e 'const o={};for(const k of ["SETUP_TOKEN","GEMINI_API_KEY","ANTHROPIC_API_KEY","BRAPI_TOKEN"]) if(process.env[k]) o[k]=process.env[k]; require("fs").writeFileSync("segredos.json",JSON.stringify(o))'
+          npx wrangler secret bulk segredos.json
+          rm -f segredos.json
+      - name: Conferir a nuvem no ar
+        if: steps.ok.outputs.seguir == 'sim'
+        run: curl -fsS "${{ steps.deploy.outputs.url }}/api/session"
+
+  android:
+    needs: nuvem
+    if: needs.nuvem.outputs.url != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with: { node-version: 22, cache: npm }
+      - uses: actions/setup-java@v5
+        with: { distribution: temurin, java-version: 21 }
+      - run: npm ci
+      - name: Apontar o app para a nuvem
+        run: |
+          node -e 'const f="capacitor.config.json";const c=JSON.parse(require("fs").readFileSync(f));c.server.url=process.argv[1];require("fs").writeFileSync(f,JSON.stringify(c,null,2))' "${{ needs.nuvem.outputs.url }}"
+          npx cap sync android
+      - name: Chave de assinatura (criada na 1ª vez e guardada cifrada no repositório)
+        env:
+          SENHA: ${{ secrets.INSA_SETUP_TOKEN }}
+        run: |
+          test -n "$SENHA" || { echo "::error::Crie o segredo INSA_SETUP_TOKEN."; exit 1; }
+          PW=$(printf '%s' "$SENHA" | sha256sum | cut -c1-40)
+          if [ ! -f android/insa/release.p12.enc ]; then
+            keytool -genkeypair -storetype PKCS12 -keystore release.p12 -alias insa -keyalg RSA -keysize 3072 -validity 18250 \
+              -storepass "$PW" -keypass "$PW" -dname "CN=INSA Command, O=INSA Dividend Army, C=PT"
+            openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -in release.p12 -out android/insa/release.p12.enc -pass env:SENHA
+            git config user.name "github-actions[bot]"; git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add android/insa/release.p12.enc && git commit -m "Chave de assinatura do Android (cifrada)" && git push
+          else
+            openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in android/insa/release.p12.enc -out release.p12 -pass env:SENHA
+          fi
+          echo "INSA_KEYSTORE=$PWD/release.p12" >> "$GITHUB_ENV"
+          echo "::add-mask::$PW"; echo "INSA_KEYSTORE_PASSWORD=$PW" >> "$GITHUB_ENV"
+      - name: Compilar o APK
+        run: |
+          v=$(node -p "require('./package.json').version")
+          IFS=. read -r a b c <<< "$v"
+          export INSA_VERSION_NAME="$v" INSA_VERSION_CODE=$((a*10000 + b*100 + c))
+          cd android && chmod +x gradlew && ./gradlew assembleRelease --no-daemon -q
+          cp app/build/outputs/apk/release/app-release.apk "../INSA-Command-$v.apk"
+          echo "APK=INSA-Command-$v.apk" >> "$GITHUB_ENV"; echo "VERSAO=$v" >> "$GITHUB_ENV"
+          rm -f ../release.p12
+      - name: Anexar o APK ao release da versão (o mesmo do Windows)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # espera o release do Windows desta versão ficar completo (até 20 min) e anexa o APK nele;
+          # assim o atualizador do Windows continua achando o latest.yml no release mais recente
+          for i in $(seq 1 40); do
+            if gh release view "v$VERSAO" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' 2>/dev/null | grep -qx latest.yml; then
+              gh release upload "v$VERSAO" "$APK" --repo "$GITHUB_REPOSITORY" --clobber
+              echo "### APK publicado em v$VERSAO" >> "$GITHUB_STEP_SUMMARY"; exit 0
+            fi
+            sleep 30
+          done
+          echo "::error::O release v$VERSAO do Windows não apareceu a tempo."; exit 1
