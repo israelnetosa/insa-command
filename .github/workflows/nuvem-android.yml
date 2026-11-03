@@ -28,6 +28,10 @@ jobs:
       - name: Conferir segredos
         id: ok
         run: |
+          # limpa espaços e quebras de linha que entram ao colar os segredos
+          for k in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID; do
+            v=$(printf '%s' "${!k}" | tr -d '[:space:]'); echo "::add-mask::$v"; echo "$k=$v" >> "$GITHUB_ENV"; export "$k=$v"
+          done
           if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
             echo "::notice::Nuvem ainda não configurada: crie os segredos CLOUDFLARE_API_TOKEN e CLOUDFLARE_ACCOUNT_ID."
             echo "seguir=nao" >> "$GITHUB_OUTPUT"
@@ -64,7 +68,7 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           BRAPI_TOKEN: ${{ secrets.BRAPI_TOKEN }}
         run: |
-          node -e 'const o={};for(const k of ["SETUP_TOKEN","GEMINI_API_KEY","ANTHROPIC_API_KEY","BRAPI_TOKEN"]) if(process.env[k]) o[k]=process.env[k]; require("fs").writeFileSync("segredos.json",JSON.stringify(o))'
+          node -e 'const o={};for(const k of ["SETUP_TOKEN","GEMINI_API_KEY","ANTHROPIC_API_KEY","BRAPI_TOKEN"]) if(process.env[k]) o[k]=process.env[k].trim(); require("fs").writeFileSync("segredos.json",JSON.stringify(o))'
           npx wrangler secret bulk segredos.json
           rm -f segredos.json
       - name: Conferir a nuvem no ar
