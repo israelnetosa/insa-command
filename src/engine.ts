@@ -117,6 +117,26 @@ export function replay(movs: Movement[]) {
   return { lots, caixa: r2(caixa), aportes: r2(aportes), proventos };
 }
 
+/**
+ * Magic Number: cotas necessárias para que o provento médio de UM mês compre UMA cota nova.
+ * magic = ⌈preço ÷ provento mensal por cota⌉. A partir daí o pelotão se reproduz sozinho.
+ * Não pagadores (provento 0) não têm Magic Number.
+ */
+export function magicNumber(preco: number, divMesCota: number | null | undefined, qtd: number) {
+  const d = Number(divMesCota ?? 0);
+  if (!(preco > 0) || !(d > 0)) return null;
+  const magic = Math.ceil(preco / d - 1e-9);
+  const faltam = Math.max(0, Math.ceil(magic - qtd - 1e-9));
+  return {
+    magic,
+    faltam,
+    progresso: r2(Math.min(100, qtd / magic * 100)),
+    custo_faltante: r2(faltam * preco),
+    ativo: qtd >= magic,
+    cotas_por_mes: r2(qtd * d / preco),      // fração de cota que os proventos compram por mês
+  };
+}
+
 export type Zona = 'ataque' | 'neutra' | 'espera' | 'sem_dados';
 
 /**
@@ -223,6 +243,7 @@ export function buildState(input: {
       renda_mes_estimada: r2(rendaEst), yoc: custo ? r2(rendaEst * 12 / custo * 100) : 0,
       teto_bazin: a?.teto_bazin ?? null, mensal: !!a?.mensal,
       zona: zona(preco, l.pm, a), peso: 0,
+      magic: magicNumber(preco, a?.div_mes_cota, l.qtd),
     };
   });
 
@@ -268,8 +289,18 @@ export function buildState(input: {
   if (caixa > 0 && caixa >= Math.min(...linhas.map(l => l.preco).filter(Boolean), Infinity)) alertas.push({ nivel: 'info', texto: `${brl(caixa)} em caixa: soldado ocioso. Veja o plano de compras.` });
   if (linhas.some(l => l.pm_estimado)) alertas.push({ nivel: 'info', texto: 'Há preços médios estimados (importação). Corrija com as notas de corretagem para precisão total.' });
 
+  const comMagic = linhas.filter(l => l.magic);
+  const sensor = {
+    ativos: comMagic.filter(l => l.magic!.ativo).map(l => l.ticker),
+    proximo: [...comMagic].filter(l => !l.magic!.ativo).sort((a, b) => a.magic!.custo_faltante - b.magic!.custo_faltante)[0]?.ticker ?? null,
+    custo_total: r2(comMagic.reduce((s, l) => s + l.magic!.custo_faltante, 0)),
+    cotas_por_mes: r2(comMagic.reduce((s, l) => s + l.magic!.cotas_por_mes, 0)),
+    sem_provento: linhas.filter(l => !l.magic).map(l => l.ticker),
+  };
+
   return {
     gerado_em: agora.toISOString(),
+    magic: sensor,
     totais: {
       patrimonio: r2(patrimonio), investido: r2(investido), caixa,
       aportes_liquidos: aportes,

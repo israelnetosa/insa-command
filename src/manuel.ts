@@ -91,7 +91,7 @@ export async function dossie(tk: Toolkit, extras: { estrategia?: any; regras?: s
   const fase = (s.fases || []).find((f: any) => f.id === s.missao?.fase?.id);
   const e = extras.estrategia;
   const linhas = (s.posicoes || []).map((p: any) =>
-    `${p.ticker} | ${p.qtd} cotas | PM ${p.preco_medio}${p.pm_estimado ? ' (est.)' : ''} | preço ${p.preco} (${p.var_dia ?? '—'}% dia, ${p.cotacao_ok ? 'cotado' : 'sem cotação'}) | valor ${p.valor} | peso ${p.peso}% | alvo ${fase?.pesos?.[p.ticker] ?? 0}% | zona ${p.zona} | teto ${p.teto_bazin ?? '—'} | renda est. ${p.renda_mes_estimada}/mês | ${p.camada ?? ''}`);
+    `${p.ticker} | ${p.qtd} cotas | PM ${p.preco_medio}${p.pm_estimado ? ' (est.)' : ''} | preço ${p.preco} (${p.var_dia ?? '—'}% dia, ${p.cotacao_ok ? 'cotado' : 'sem cotação'}) | valor ${p.valor} | peso ${p.peso}% | alvo ${fase?.pesos?.[p.ticker] ?? 0}% | zona ${p.zona} | teto ${p.teto_bazin ?? '—'} | renda est. ${p.renda_mes_estimada}/mês | magic ${p.magic ? `${p.magic.magic} (${p.magic.progresso}%, faltam ${p.magic.faltam} = R$ ${p.magic.custo_faltante})` : 'sem provento'} | ${p.camada ?? ''}`);
   const rot = e?.roteiro_12_meses as any[] | undefined;
   const idx = rot ? rot.findIndex(r => r.meta_patrimonio > s.totais.patrimonio) : -1;
   return [
@@ -99,6 +99,7 @@ export async function dossie(tk: Toolkit, extras: { estrategia?: any; regras?: s
     `Totais: patrimônio R$ ${s.totais.patrimonio} (ativos ${s.totais.investido}, caixa ${s.totais.caixa}); resultado não realizado ${s.totais.resultado}; resultado do dia ${s.totais.resultado_dia}; renda estimada R$ ${s.totais.renda_mes_estimada}/mês; recebida 12m ${s.totais.renda_12m_recebida}; DY ${s.totais.dy_carteira}%; aporte mensal ${s.aporte_mensal}.`,
     `Missão: meta R$ ${s.missao.meta_mensal}/mês; próximo marco R$ ${s.missao.proximo_marco}/mês (${s.missao.progresso_marco}%); fase ${fase?.nome ?? '—'}; maior posição ${s.missao.maior_posicao?.ticker} ${s.missao.maior_posicao?.peso}% (teto ${s.missao.maior_posicao?.teto}%); ${s.missao.em_ataque} em zona de ataque.`,
     `Posições:\n${linhas.join('\n')}`,
+    `Sensor Magic Number (cotas para o provento de 1 mês comprar 1 cota): ${JSON.stringify(s.magic)}`,
     `Plano de compras com o caixa atual: ${JSON.stringify(s.plano)}`,
     `Alertas: ${(s.alertas || []).map((a: any) => a.texto).join(' | ') || 'nenhum'}`,
     `Regras de engajamento:\n- ${(extras.regras || []).join('\n- ')}`,

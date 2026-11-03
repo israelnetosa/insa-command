@@ -282,6 +282,16 @@ function cockpit() {
 }
 
 // ───────── posições ─────────
+// Sensor Magic Number: 20 segmentos acendem conforme as cotas se aproximam do Magic Number
+function sensorMagic(m, compacto) {
+  if (!m) return `<span class="faint">sem provento</span>`;
+  const acesos = Math.round(m.progresso / 5);
+  const segs = Array.from({ length: 20 }, (_, i) => `<i class="${i < acesos ? (m.ativo ? 'on ok' : 'on') : ''}"></i>`).join('');
+  return `<div class="magic ${m.ativo ? 'ativo' : ''}" title="Magic Number ${m.magic}: com ${m.magic} cotas o provento de um mês compra 1 cota nova">
+    <div class="magic-segs" role="img" aria-label="${pct(m.progresso, 0)} do Magic Number">${segs}</div>
+    <div class="magic-txt">${m.ativo ? '<b class="pos">Auto-reprodução ativa</b>' : `<b>${pct(m.progresso, 0)}</b> de ${nf(m.magic, 0)}`}${compacto ? '' : m.ativo ? '' : ` · faltam ${nf(m.faltam, 0)} (${brl(m.custo_faltante, 0)})`}</div></div>`;
+}
+
 function posicoes() {
   const ps = S.posicoes;
   const row = (p) => `<tr>
@@ -293,6 +303,7 @@ function posicoes() {
     <td class="num">${brl(p.valor)}</td><td class="num">${pct(p.peso)}</td>
     <td class="num ${sign(p.resultado)}">${brl(p.resultado)}<span class="nm">${pct(p.resultado_pct)}</span></td>
     <td class="num">${brl(p.renda_mes_estimada)}<span class="nm">YoC ${pct(p.yoc, 2)}</span></td>
+    <td>${sensorMagic(p.magic)}</td>
     <td class="num">${p.teto_bazin ? brl(p.teto_bazin) : '—'}</td>
     <td><span class="tag ${p.zona}">${p.zona.replace('_', ' ')}</span></td></tr>`;
   const card = (p) => `<div class="card tight pc">
@@ -300,7 +311,8 @@ function posicoes() {
     <div class="r"><b class="num">${brl(p.valor)}</b><div class="faint">${pct(p.peso)} da carteira</div></div>
     <div class="faint">${nf(p.qtd, 0)} × ${brl(p.preco)} <span class="${sign(p.var_dia)}">${p.var_dia == null ? '' : pct(p.var_dia, 2)}</span></div>
     <div class="r faint">PM ${brl(p.preco_medio)}${p.pm_estimado ? ' (est.)' : ''}</div>
-    <div class="faint">renda ${brl(p.renda_mes_estimada)}/mês</div><div class="r ${sign(p.resultado)}">${brl(p.resultado)}</div></div>`;
+    <div class="faint">renda ${brl(p.renda_mes_estimada)}/mês</div><div class="r ${sign(p.resultado)}">${brl(p.resultado)}</div>
+    <div style="grid-column:1/-1">${sensorMagic(p.magic)}</div></div>`;
   if (!ps.length) return frame('posicoes', `<div class="eyebrow">Batalhões</div><h1>Pelotões em campo</h1>
     <div class="card empty"><p>Nenhuma posição registrada ainda. Importe a migração do INSA Wallet para trazer as suas cotas.</p>
     <div class="actions" style="justify-content:center"><a class="btn" href="#/cockpit">Importar posições</a></div></div>`);
@@ -315,8 +327,21 @@ function posicoes() {
       <div class="bat-num"><span>${brl(b.valor)}</span><span class="pos">${brl(b.renda)}/mês</span><span class="${sign(b.resultado)}">${b.resultado > 0 ? '+' : ''}${brl(b.resultado)}</span></div>
       <div class="bat-itens">${b.itens.map(p => `<span class="tag ${p.zona}" title="${esc(p.nome)}">${esc(p.ticker)} · ${nf(p.qtd, 0)}</span>`).join('')}</div>
     </div>`).join('')}</div>
+    ${(() => { const mg = S.magic; if (!mg) return '';
+      const ord = ps.filter(p => p.magic).sort((a, b) => b.magic.progresso - a.magic.progresso);
+      const prox = ps.find(p => p.ticker === mg.proximo);
+      return `<section class="card sensor"><div class="sensor-topo"><h2>Sensor Magic Number</h2>
+        <span class="faint">Cotas para o provento de um mês comprar uma cota nova do mesmo ativo</span></div>
+        <div class="sensor-kpis">
+          <div><span class="faint">Em auto-reprodução</span><b class="${mg.ativos.length ? 'pos' : ''}">${mg.ativos.length} de ${ord.length}</b><span class="faint">${mg.ativos.length ? esc(mg.ativos.join(', ')) : 'nenhum pelotão ainda'}</span></div>
+          <div><span class="faint">Mais perto de se reproduzir</span><b>${prox ? esc(prox.ticker) : '—'}</b><span class="faint">${prox ? `faltam ${nf(prox.magic.faltam, 0)} cotas · ${brl(prox.magic.custo_faltante)}` : ''}</span></div>
+          <div><span class="faint">Cotas geradas por mês pelos proventos</span><b>${nf(mg.cotas_por_mes, 2)}</b><span class="faint">somando todos os pelotões</span></div>
+          <div><span class="faint">Para todos atingirem</span><b>${brl(mg.custo_total, 0)}</b><span class="faint">${mg.sem_provento.length ? 'sem provento: ' + esc(mg.sem_provento.join(', ')) : 'a preços de hoje'}</span></div>
+        </div>
+        <div class="sensor-lista">${ord.map(p => `<div class="sensor-linha"><span class="tk">${esc(p.ticker)}</span>${sensorMagic(p.magic)}</div>`).join('')}</div>
+      </section>`; })()}
     <section><h2>Todos os pelotões</h2>
-    <div class="table-wrap pos-table"><table><thead><tr><th>Ativo</th><th>Cotas</th><th>Preço médio</th><th>Cotação</th><th>Dia</th><th>Valor</th><th>Peso</th><th>Resultado</th><th>Renda/mês</th><th>Teto Bazin</th><th>Zona</th></tr></thead>
+    <div class="table-wrap pos-table"><table><thead><tr><th>Ativo</th><th>Cotas</th><th>Preço médio</th><th>Cotação</th><th>Dia</th><th>Valor</th><th>Peso</th><th>Resultado</th><th>Renda/mês</th><th style="text-align:left">Magic Number</th><th>Teto Bazin</th><th>Zona</th></tr></thead>
     <tbody>${ps.map(row).join('')}</tbody></table></div>
     <div class="poscards">${ps.map(card).join('')}</div></section>
     <p class="faint" style="margin-top:12px">Zona de ataque: preço ≤ teto Bazin (6%) e (preço ≤ preço médio + 2% ou metade inferior do range de 52 semanas). Espera: acima do teto ou não pagador.</p>`);

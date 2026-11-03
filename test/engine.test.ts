@@ -95,3 +95,18 @@ test('relógio do pregão (horário de Brasília)', () => {
   assert.equal(new Date(pregao(new Date('2026-11-06T21:00:00Z')).em).toISOString(), '2026-11-09T13:00:00.000Z');
   assert.equal(emPregao(new Date('2026-11-07T15:00:00Z')), false);
 });
+
+import { magicNumber } from '../src/engine.ts';
+test('Magic Number: cotas para o provento de um mês comprar uma cota', () => {
+  // TAEE11 a R$ 45,87 pagando R$ 0,2505/mês por cota → 184 cotas (igual ao INSA Wallet)
+  const t = magicNumber(45.87, 0.2505, 11)!;
+  assert.equal(t.magic, 184); assert.equal(t.faltam, 173); assert.equal(t.ativo, false);
+  assert.equal(t.custo_faltante, 7935.51);
+  // BTLG11 a 104,80 com 0,8024 → 131 (igual ao INSA Wallet)
+  assert.equal(magicNumber(104.8, 0.8024, 2)!.magic, 131);
+  // atingido
+  const m = magicNumber(10, 0.1, 100)!;
+  assert.equal(m.magic, 100); assert.equal(m.ativo, true); assert.equal(m.faltam, 0); assert.equal(m.progresso, 100); assert.equal(m.cotas_por_mes, 1);
+  // não pagador
+  assert.equal(magicNumber(66.9, 0, 2), null);
+});
