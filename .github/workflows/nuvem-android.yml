@@ -41,6 +41,15 @@ jobs:
         with: { node-version: 22, cache: npm }
       - if: steps.ok.outputs.seguir == 'sim'
         run: npm ci && npm test && npm run build:web
+      - name: Conferir o token da Cloudflare
+        if: steps.ok.outputs.seguir == 'sim'
+        run: |
+          npx wrangler whoami 2>&1 | tee quem.log | grep -viE "email" || true
+          if ! npx wrangler d1 list --json > /dev/null 2> d1err.log; then
+            cat d1err.log
+            echo "::error::O token da Cloudflare não tem acesso ao D1. Edite o token em My Profile → API Tokens e acrescente: Account → D1 → Edit (e confira se a conta escolhida é a mesma do CLOUDFLARE_ACCOUNT_ID)."
+            exit 1
+          fi
       - name: Banco D1 (cria na primeira vez)
         if: steps.ok.outputs.seguir == 'sim'
         run: |
