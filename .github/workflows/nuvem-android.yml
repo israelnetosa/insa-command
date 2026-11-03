@@ -44,7 +44,15 @@ jobs:
       - name: Conferir o token da Cloudflare
         if: steps.ok.outputs.seguir == 'sim'
         run: |
-          npx wrangler whoami 2>&1 | tee quem.log | grep -viE "email" || true
+          # diagnóstico sem expor valores: o token é válido? de que tipo? enxerga a conta informada?
+          api() { curl -sS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4$1"; }
+          echo "token de usuário válido:  $(api /user/tokens/verify | node -pe 'JSON.parse(require("fs").readFileSync(0)).success')"
+          echo "token de conta válido:    $(api /accounts/$CLOUDFLARE_ACCOUNT_ID/tokens/verify | node -pe 'JSON.parse(require("fs").readFileSync(0)).success')"
+          echo "contas visíveis:          $(api /accounts | node -pe 'const j=JSON.parse(require("fs").readFileSync(0));(j.result||[]).length')"
+          echo "conta informada visível:  $(api /accounts | node -pe 'const j=JSON.parse(require("fs").readFileSync(0));(j.result||[]).some(a=>a.id===process.env.CLOUDFLARE_ACCOUNT_ID)')"
+          echo "tamanho do Account ID:    ${#CLOUDFLARE_ACCOUNT_ID} (o certo é 32)"
+          echo "KV (Workers) acessível:   $(api /accounts/$CLOUDFLARE_ACCOUNT_ID/storage/kv/namespaces | node -pe 'JSON.parse(require("fs").readFileSync(0)).success')"
+          echo "D1 acessível:             $(api /accounts/$CLOUDFLARE_ACCOUNT_ID/d1/database | node -pe 'JSON.parse(require("fs").readFileSync(0)).success')"
           if ! npx wrangler d1 list --json > /dev/null 2> d1err.log; then
             cat d1err.log
             echo "::error::O token da Cloudflare não tem acesso ao D1. Edite o token em My Profile → API Tokens e acrescente: Account → D1 → Edit (e confira se a conta escolhida é a mesma do CLOUDFLARE_ACCOUNT_ID)."
