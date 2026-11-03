@@ -185,10 +185,11 @@ async function executar(nome: NomeFerramenta, args: any, tk: Toolkit, ctx: { fet
 }
 
 // ───────── Gemini: escolha de modelo, pesquisa, voz ─────────
-let cacheModelos: { em: number; flash: string; tts: string } | null = null;
+let cacheModelos: { em: number; flash: string; tts: string; reservas: string[] } | null = null;
 export async function modelosGemini(key: string, f: Fetch) {
   if (cacheModelos && Date.now() - cacheModelos.em < 24 * 3600_000) return cacheModelos;
   let flash = GEMINI_PADRAO, tts = GEMINI_TTS_PADRAO;
+  let reservas: string[] = [GEMINI_PADRAO, 'gemini-3.6-flash', 'gemini-3.5-flash-lite'];
   try {
     const r = await f('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', { headers: { 'x-goog-api-key': key }, signal: AbortSignal.timeout(15000) });
     if (r.ok) {
@@ -197,25 +198,68 @@ export async function modelosGemini(key: string, f: Fetch) {
       const pick = (re: RegExp) => nomes.filter(n => re.test(n)).sort((a, b) => ver(b) - ver(a))[0];
       flash = pick(/^gemini-\d+(\.\d+)?-flash$/) ?? flash;
       tts = pick(/^gemini-\d+(\.\d+)?-flash-tts$/) ?? tts;
+      const ord = (re: RegExp) => nomes.filter(n => re.test(n)).sort((a, b) => ver(b) - ver(a));
+      const lista = [...ord(/^gemini-\d+(\.\d+)?-flash$/), ...ord(/^gemini-\d+(\.\d+)?-flash-lite$/).slice(0, 1)];
+      if (lista.length) reservas = lista.slice(0, 4);
     }
   } catch { /* usa os padrões */ }
-  cacheModelos = { em: Date.now(), flash, tts };
+  cacheModelos = { em: Date.now(), flash, tts, reservas };
   return cacheModelos;
 }
 
+// ───────── erros legíveis e novas tentativas ─────────
+export class ErroIA extends Error {
+  provedor: string; status: number; temporario: boolean; semCredito: boolean;
+  constructor(msg: string, provedor: string, status: number, temporario: boolean, semCredito = false) {
+    super(msg); this.provedor = provedor; this.status = status; this.temporario = temporario; this.semCredito = semCredito;
+  }
+}
+const espera = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+export function explicarErro(provedor: 'Claude' | 'Gemini', status: number, corpo: string): ErroIA {
+  const c = corpo.toLowerCase();
+  if (provedor === 'Claude' && /credit balance|billing|purchase credits/.test(c))
+    return new ErroIA('Claude sem créditos na API: adicione créditos em platform.claude.com → Billing. A assinatura Claude Pro não cobre o uso por API.', provedor, status, false, true);
+  if (status === 401 || status === 403 || /api key not valid|invalid x-api-key|permission/.test(c))
+    return new ErroIA(`${provedor}: chave inválida ou sem permissão. Confira em Ajustes → Inteligência.`, provedor, status, false);
+  if (status === 429) return new ErroIA(`${provedor}: limite de uso atingido no momento.`, provedor, status, true);
+  if (status === 503 || status === 529 || /overloaded|high demand|unavailable/.test(c)) return new ErroIA(`${provedor}: servidores sobrecarregados agora.`, provedor, status, true);
+  if (status >= 500) return new ErroIA(`${provedor}: erro temporário no servidor (${status}).`, provedor, status, true);
+  if (status === 404) return new ErroIA(`${provedor}: modelo não encontrado. Ajuste o modelo em Ajustes → Configuração do M.A.N.U.E.L.`, provedor, status, false);
+  return new ErroIA(`${provedor} recusou o pedido (${status}): ${corpo.slice(0, 140)}`, provedor, status, false);
+}
+
+/** Chama o Gemini tentando de novo em sobrecarga e passando para o próximo modelo da lista. */
+async function geminiPost(f: Fetch, key: string, modelos: string[], body: unknown, timeout = 120000) {
+  let ultimo: ErroIA | null = null;
+  for (const m of modelos) {
+    for (let tentativa = 0; tentativa < 3; tentativa++) {
+      let r: Response;
+      try {
+        r = await f(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent`, {
+          method: 'POST', signal: AbortSignal.timeout(timeout),
+          headers: { 'x-goog-api-key': key, 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+        });
+      } catch { ultimo = new ErroIA('Gemini: sem conexão ou tempo esgotado.', 'Gemini', 0, true); await espera(1000 * (tentativa + 1)); continue; }
+      if (r.ok) return { j: (await r.json()) as any, modelo: m };
+      ultimo = explicarErro('Gemini', r.status, await r.text().catch(() => ''));
+      if (!ultimo.temporario) { if (r.status === 404) break; throw ultimo; }
+      if (tentativa < 2) await espera([1200, 3000][tentativa]);
+    }
+  }
+  throw ultimo ?? new ErroIA('Gemini indisponível.', 'Gemini', 0, true);
+}
+const listaModelos = async (key: string, modelo: string, f: Fetch) => {
+  const { reservas } = await modelosGemini(key, f);
+  return modelo === 'auto' ? reservas : [modelo, ...reservas.filter(x => x !== modelo)];
+};
+
 export async function pesquisar(pergunta: string, key: string, modelo: string, f: Fetch) {
-  const m = modelo === 'auto' ? (await modelosGemini(key, f)).flash : modelo;
-  const r = await f(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent`, {
-    method: 'POST', signal: AbortSignal.timeout(60000),
-    headers: { 'x-goog-api-key': key, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
+  const { j } = await geminiPost(f, key, await listaModelos(key, modelo, f), {
       systemInstruction: { parts: [{ text: 'Você é um pesquisador financeiro. Responda em português do Brasil, em até 10 linhas, com datas e números exatos. Prefira fontes primárias (RI das empresas, B3, CVM, relatórios dos fundos) e diga quando a informação não foi encontrada. Não faça recomendação de investimento.' }] },
       contents: [{ role: 'user', parts: [{ text: pergunta }] }],
       tools: [{ google_search: {} }],
-    }),
-  });
-  if (!r.ok) throw new Error(`Gemini (pesquisa) respondeu ${r.status}`);
-  const j: any = await r.json();
+    }, 60000);
   const c = j.candidates?.[0];
   const texto = (c?.content?.parts ?? []).map((p: any) => p.text ?? '').join('').trim();
   const fontes = (c?.groundingMetadata?.groundingChunks ?? [])
@@ -268,13 +312,21 @@ async function viaClaude(hist: Turno[], texto: string, sys: string, key: string,
   messages.push({ role: 'user', content: texto });
   const tools = FERRAMENTAS.map(t => ({ name: t.name, description: t.description, input_schema: t.schema }));
   for (let i = 0; i < 8; i++) {
-    const r = await f('https://api.anthropic.com/v1/messages', {
-      method: 'POST', signal: AbortSignal.timeout(120000),
-      headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-      body: JSON.stringify({ model: modelo, max_tokens: 4096, system: sys, messages, tools }),
-    });
-    if (!r.ok) { const t = await r.text().catch(() => ''); throw new Error(`Claude respondeu ${r.status}: ${t.slice(0, 160)}`); }
-    const j: any = await r.json();
+    let j: any = null;
+    for (let tentativa = 0; tentativa < 3 && !j; tentativa++) {
+      let r: Response;
+      try {
+        r = await f('https://api.anthropic.com/v1/messages', {
+          method: 'POST', signal: AbortSignal.timeout(120000),
+          headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+          body: JSON.stringify({ model: modelo, max_tokens: 4096, system: sys, messages, tools }),
+        });
+      } catch { if (tentativa === 2) throw new ErroIA('Claude: sem conexão ou tempo esgotado.', 'Claude', 0, true); await espera(1500); continue; }
+      if (r.ok) { j = await r.json(); break; }
+      const e = explicarErro('Claude', r.status, await r.text().catch(() => ''));
+      if (!e.temporario || tentativa === 2) throw e;
+      await espera([1500, 4000][tentativa]);
+    }
     uso.entrada += j.usage?.input_tokens ?? 0; uso.saida += j.usage?.output_tokens ?? 0;
     messages.push({ role: 'assistant', content: j.content });
     const chamadas = (j.content ?? []).filter((b: any) => b.type === 'tool_use');
@@ -288,19 +340,15 @@ async function viaClaude(hist: Turno[], texto: string, sys: string, key: string,
   return 'Senhor, a análise ficou longa demais e foi interrompida. Pode reformular a pergunta de forma mais específica?';
 }
 
-async function viaGemini(hist: Turno[], texto: string, sys: string, key: string, modelo: string, run: (n: NomeFerramenta, a: any) => Promise<string>, f: Fetch, uso: Resultado['uso']) {
-  const m = modelo === 'auto' ? (await modelosGemini(key, f)).flash : modelo;
+async function viaGemini(hist: Turno[], texto: string, sys: string, key: string, modelo: string, run: (n: NomeFerramenta, a: any) => Promise<string>, f: Fetch, uso: Resultado['uso'], usado: { modelo: string }) {
+  let modelos = await listaModelos(key, modelo, f);
   const contents: any[] = hist.map(t => ({ role: t.papel === 'usuario' ? 'user' : 'model', parts: [{ text: t.texto }] }));
   contents.push({ role: 'user', parts: [{ text: texto }] });
   const tools = [{ functionDeclarations: FERRAMENTAS.map(t => ({ name: t.name, description: t.description, parameters: t.schema })) }];
   for (let i = 0; i < 8; i++) {
-    const r = await f(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent`, {
-      method: 'POST', signal: AbortSignal.timeout(120000),
-      headers: { 'x-goog-api-key': key, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ systemInstruction: { parts: [{ text: sys }] }, contents, tools }),
-    });
-    if (!r.ok) { const t = await r.text().catch(() => ''); throw new Error(`Gemini respondeu ${r.status}: ${t.slice(0, 160)}`); }
-    const j: any = await r.json();
+    const { j, modelo: m } = await geminiPost(f, key, modelos, { systemInstruction: { parts: [{ text: sys }] }, contents, tools });
+    // depois da primeira resposta, fica no mesmo modelo (as assinaturas de raciocínio são por modelo)
+    modelos = [m]; usado.modelo = m;
     uso.entrada += j.usageMetadata?.promptTokenCount ?? 0; uso.saida += j.usageMetadata?.candidatesTokenCount ?? 0;
     const content = j.candidates?.[0]?.content ?? { role: 'model', parts: [] };
     contents.push(content);   // devolvido como veio (inclui assinaturas de raciocínio)
@@ -312,6 +360,9 @@ async function viaGemini(hist: Turno[], texto: string, sys: string, key: string,
   }
   return 'Senhor, a análise ficou longa demais e foi interrompida. Pode reformular a pergunta de forma mais específica?';
 }
+
+// chave → até quando pular o Claude por falta de crédito (evita esperar uma recusa certa)
+const claudeSemCredito = new Map<string, number>();
 
 /** Conversa com o M.A.N.U.E.L.: escolhe o provedor, roda as ferramentas e cai para o outro se o primeiro falhar. */
 export async function conversar(opts: {
@@ -329,21 +380,23 @@ export async function conversar(opts: {
   const erros: string[] = [];
   for (const p of ordem) {
     try {
+      if (p === 'claude' && opts.chaves.anthropic && Date.now() < (claudeSemCredito.get(opts.chaves.anthropic) ?? 0)) { erros.push('Claude sem créditos na API (adicione em platform.claude.com → Billing).'); continue; }
       if (p === 'claude' && opts.chaves.anthropic) {
         const texto = await viaClaude(hist, opts.texto, sys, opts.chaves.anthropic, opts.cfg.modeloClaude, run, f, uso);
         return { texto, provedor: 'Claude', modelo: opts.cfg.modeloClaude, ferramentas: ev, propostas, fontes, uso };
       }
       if (p === 'gemini' && opts.chaves.gemini) {
-        const modelo = opts.cfg.modeloGemini === 'auto' ? (await modelosGemini(opts.chaves.gemini, f)).flash : opts.cfg.modeloGemini;
-        const texto = await viaGemini(hist, opts.texto, sys, opts.chaves.gemini, modelo, run, f, uso);
-        return { texto, provedor: 'Gemini', modelo, ferramentas: ev, propostas, fontes, uso };
+        const usado = { modelo: opts.cfg.modeloGemini };
+        const texto = await viaGemini(hist, opts.texto, sys, opts.chaves.gemini, opts.cfg.modeloGemini, run, f, uso, usado);
+        return { texto, provedor: 'Gemini', modelo: usado.modelo, ferramentas: ev, propostas, fontes, uso };
       }
     } catch (e) {
+      if (e instanceof ErroIA && e.semCredito && opts.chaves.anthropic) claudeSemCredito.set(opts.chaves.anthropic, Date.now() + 30 * 60_000);
       erros.push(String((e as Error).message));
       // Já houve proposta criada: repetir com o outro provedor duplicaria. Melhor parar e avisar.
       if (propostas.length) throw new Error('A análise foi interrompida depois de preparar uma proposta. Confira as propostas pendentes. Detalhe: ' + erros.join(' | ').slice(0, 300));
     }
   }
   if (!opts.chaves.anthropic && !opts.chaves.gemini) throw new Error('Nenhuma chave de IA configurada. Cadastre em Ajustes → Inteligência.');
-  throw new Error('Os dois provedores falharam: ' + erros.join(' | ').slice(0, 400));
+  throw new Error('Senhor, não consegui responder agora.\n' + erros.map(x => '- ' + x).join('\n') + '\nTente de novo em alguns instantes.');
 }

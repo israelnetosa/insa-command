@@ -839,7 +839,8 @@ async function manuel() {
       if (CONV.config.fala_auto) falar(r.texto);
     } catch (e) {
       document.getElementById('pens')?.remove(); holoEstado(null);
-      th.insertAdjacentHTML('beforeend', `<div class="alert atencao">${esc(e.message)}</div>`);
+      th.insertAdjacentHTML('beforeend', `<div class="alert atencao"><div>${md(e.message)}</div></div>`);
+      th.scrollTop = th.scrollHeight;
       ta.value = texto;
     }
     b.disabled = false; ta.focus();

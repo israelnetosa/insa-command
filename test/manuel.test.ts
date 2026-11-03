@@ -120,3 +120,33 @@ test('sem chaves: erro claro; falha depois de proposta não duplica no outro pro
   assert.equal(propostas.length, 1);
   assert.ok(!chamadas.some(c => c.url.includes('generativelanguage')));
 });
+
+test('Claude sem crédito + Gemini sobrecarregado: tenta de novo, troca de modelo e responde', async () => {
+  const { tk } = tkFicticio();
+  const { f, chamadas } = fakeFetch({
+    'api.anthropic.com': [{ status: 400, json: { type: 'error', error: { type: 'invalid_request_error', message: 'Your credit balance is too low to access the Anthropic API.' } } }],
+    '/v1beta/models?pageSize': [{ models: [{ name: 'models/gemini-3.8-flash' }, { name: 'models/gemini-3.6-flash' }, { name: 'models/gemini-3.5-flash-lite' }] }],
+    ':generateContent': [
+      { status: 503, json: { error: { code: 503, message: 'This model is currently experiencing high demand.' } } },
+      { status: 503, json: { error: { code: 503, message: 'high demand' } } },
+      { status: 503, json: { error: { code: 503, message: 'high demand' } } },
+      { candidates: [{ content: { role: 'model', parts: [{ text: 'Senhor, aqui está.' }] } }] },
+    ],
+  });
+  const r = await conversar({ texto: 'oi', historico: [], tk, cfg: CONFIG_PADRAO, chaves: { anthropic: 'sem-credito', gemini: 'g' }, fetch: f });
+  assert.equal(r.provedor, 'Gemini');
+  assert.equal(r.modelo, 'gemini-3.6-flash');          // 3 tentativas no 3.8 → passou para o 3.6
+  const gens = chamadas.filter(c => c.url.includes(':generateContent')).map(c => c.url.match(/models\/([^:]+)/)![1]);
+  assert.deepEqual(gens, ['gemini-3.8-flash', 'gemini-3.8-flash', 'gemini-3.8-flash', 'gemini-3.6-flash']);
+});
+
+test('mensagem de erro final é clara quando tudo falha', async () => {
+  const { tk } = tkFicticio();
+  const { f } = fakeFetch({
+    'api.anthropic.com': [{ status: 401, json: { error: { message: 'invalid x-api-key' } } }],
+    '/v1beta/models?pageSize': [{ models: [{ name: 'models/gemini-3.8-flash' }] }],
+    ':generateContent': [{ status: 403, json: { error: { message: 'API key not valid' } } }],
+  });
+  await assert.rejects(conversar({ texto: 'oi', historico: [], tk, cfg: CONFIG_PADRAO, chaves: { anthropic: 'outra', gemini: 'g' }, fetch: f }),
+    (e: Error) => /Claude: chave inválida/.test(e.message) && /Gemini: chave inválida/.test(e.message));
+});

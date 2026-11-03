@@ -3,7 +3,7 @@
 
 import { handleAuth, currentSession, isConfigured, json, type Env } from './auth';
 import { buildState, replay, planoCompras, faseAtual, LedgerError, type Movement } from './engine';
-import { conversar, voz, CONFIG_PADRAO, type Toolkit, type IAConfig } from './manuel';
+import { conversar, voz, explicarErro, CONFIG_PADRAO, type Toolkit, type IAConfig } from './manuel';
 import { refreshQuotes, liveRefresh, emPregao, pregao, INDICES, fetchQuote } from './market';
 import { seedMovements, seedAssets, seedSettings, validarMigracao } from './seed';
 
@@ -428,9 +428,16 @@ async function api(req: Request, env: Env, url: URL): Promise<Response> {
     out.gemini = env.GEMINI_API_KEY
       ? await probe('https://generativelanguage.googleapis.com/v1beta/models?pageSize=1', { 'x-goog-api-key': env.GEMINI_API_KEY })
       : { ok: false, erro: 'GEMINI_API_KEY não configurada' };
-    out.claude = env.ANTHROPIC_API_KEY
-      ? await probe('https://api.anthropic.com/v1/models?limit=1', { 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' })
-      : { ok: false, erro: 'ANTHROPIC_API_KEY não configurada' };
+    // Claude: uma mensagem mínima (1 token) — só ela revela falta de crédito; listar modelos passa mesmo sem saldo
+    if (env.ANTHROPIC_API_KEY) {
+      const t0 = Date.now(); const cfg = await lerConfigIA(env);
+      try {
+        const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST',
+          headers: { 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+          body: JSON.stringify({ model: cfg.modeloClaude, max_tokens: 1, messages: [{ role: 'user', content: 'ok' }] }) });
+        out.claude = r.ok ? { ok: true, ms: Date.now() - t0 } : { ok: false, erro: explicarErro('Claude', r.status, await r.text().catch(() => '')).message };
+      } catch { out.claude = { ok: false, erro: 'sem conexão' }; }
+    } else out.claude = { ok: false, erro: 'ANTHROPIC_API_KEY não configurada' };
     out.brapi = env.BRAPI_TOKEN ? { ok: true } : { ok: false, erro: 'BRAPI_TOKEN não configurado (usando só Yahoo)' };
     return json(out);
   }
