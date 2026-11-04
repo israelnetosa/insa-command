@@ -133,6 +133,7 @@ jobs:
         run: |
           test -n "$SENHA" || { echo "::error::Crie o segredo INSA_SETUP_TOKEN."; exit 1; }
           PW=$(printf '%s' "$SENHA" | sha256sum | cut -c1-40)
+          mkdir -p android/insa
           if [ ! -f android/insa/release.p12.enc ]; then
             keytool -genkeypair -storetype PKCS12 -keystore release.p12 -alias insa -keyalg RSA -keysize 3072 -validity 18250 \
               -storepass "$PW" -keypass "$PW" -dname "CN=INSA Command, O=INSA Dividend Army, C=PT"
