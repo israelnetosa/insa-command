@@ -1,4 +1,5 @@
 // INSA Command · interface (PWA). Sem frameworks, sem rastreadores.
+import { ophanim, ligarOphanim } from './ophanim.js';
 
 const $app = document.getElementById('app');
 const CACHE_KEY = 'insa_state_v1';
@@ -165,31 +166,6 @@ function tick() {
 }
 setInterval(tick, 1000);
 
-function reator(t, m) {
-  const C = 200, arc = (r, v, cor, w = 9) => { const c = 2 * Math.PI * r, f = Math.max(0, Math.min(100, v)) / 100;
-    return `<circle cx="${C}" cy="${C}" r="${r}" fill="none" stroke="rgba(72,229,255,.1)" stroke-width="${w}"/>
-      <circle cx="${C}" cy="${C}" r="${r}" fill="none" stroke="${cor}" stroke-opacity=".22" stroke-width="${w + 8}" stroke-dasharray="${(c * f).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 ${C} ${C})"/>
-      <circle cx="${C}" cy="${C}" r="${r}" fill="none" stroke="${cor}" stroke-width="${w}" stroke-dasharray="${(c * f).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 ${C} ${C})"/>`; };
-  const ticks = Array.from({ length: 120 }, (_, i) => { const a = i * 3 * Math.PI / 180, l = i % 10 === 0 ? 12 : i % 5 === 0 ? 7 : 4, r1 = 192, r2 = r1 - l;
-    return `<line x1="${(C + r1 * Math.sin(a)).toFixed(1)}" y1="${(C - r1 * Math.cos(a)).toFixed(1)}" x2="${(C + r2 * Math.sin(a)).toFixed(1)}" y2="${(C - r2 * Math.cos(a)).toFixed(1)}" stroke="${i % 30 === 0 ? '#ffb347' : 'rgba(72,229,255,.5)'}" stroke-width="${i % 10 === 0 ? 1.6 : 1}"/>`; }).join('');
-  const conc = m.maior_posicao ? m.maior_posicao.peso / m.maior_posicao.teto * 100 : 0;
-  const corConc = m.maior_posicao && m.maior_posicao.peso > m.maior_posicao.teto ? '#ff4d5e' : '#ffb347';
-  const ataque = m.em_ataque / Math.max(1, t.n_ativos) * 100;
-  return `<svg viewBox="0 0 400 400" role="img" aria-label="Núcleo: patrimônio ${brl(t.patrimonio)}; ${pct(m.progresso_marco)} rumo ao marco; maior posição ${pct(m.maior_posicao?.peso ?? 0)} contra teto de ${m.maior_posicao?.teto ?? 0}%; ${m.em_ataque} de ${t.n_ativos} em zona de ataque">
-    <g class="giro">${ticks}</g>
-    ${arc(166, m.progresso_marco, '#48e5ff', 10)}
-    ${arc(144, conc, corConc, 8)}
-    ${arc(124, ataque, '#5cffb0', 6)}
-    <g class="giro-r"><circle cx="${C}" cy="${C}" r="106" fill="none" stroke="rgba(72,229,255,.35)" stroke-width="1" stroke-dasharray="2 6"/>
-      <path d="M${C} 94 l5 -9 h-10 z M${C} 306 l5 9 h-10 z" fill="#ffb347"/></g>
-    <circle cx="${C}" cy="${C}" r="96" fill="rgba(4,18,28,.85)" stroke="rgba(72,229,255,.4)"/>
-    <text class="centro-lbl" x="${C}" y="${C - 26}" text-anchor="middle">Patrimônio</text>
-    <text class="centro-val" x="${C}" y="${C + 8}" text-anchor="middle">${brl(t.patrimonio)}</text>
-    <text class="centro-sub" x="${C}" y="${C + 32}" text-anchor="middle">${brl(t.investido, 0)} em ativos</text>
-    <text class="centro-sub" x="${C}" y="${C + 48}" text-anchor="middle">${brl(t.caixa)} em caixa</text>
-  </svg>`;
-}
-
 function ring(pctVal, color, label, sub) {
   const r = 40, c = 2 * Math.PI * r, v = Math.max(0, Math.min(100, pctVal));
   return `<div class="card gauge"><svg viewBox="0 0 96 96" role="img" aria-label="${esc(label)}: ${nf(pctVal, 1)}%">
@@ -248,7 +224,7 @@ function cockpit() {
     <div class="eyebrow">INSA / Centro de comando</div>
     <h1>A missão em perspectiva, Senhor.</h1>
     <div class="nucleo">
-      <div class="card reator">${reator(t, m)}</div>
+      <div class="card reator">${ophanim(s)}</div>
       <div class="leituras">
         <div class="card kpi leitura"><div class="label">Resultado do dia</div><div class="val num ${sign(t.resultado_dia)}">${t.resultado_dia > 0 ? '+' : ''}${brl(t.resultado_dia)}</div>
           <div class="faint"><a href="#/radar">Abrir radar ao vivo</a></div></div>
@@ -259,10 +235,10 @@ function cockpit() {
         <div class="card kpi leitura"><div class="label">Próximo marco</div><div class="val num">${brl(m.falta_marco)}<small>/mês</small></div>
           <div class="bar"><i style="width:${Math.min(100, m.progresso_marco)}%"></i></div>
           <div class="faint">faltam para ${brl(m.proximo_marco, 0)}/mês · meta ${brl(m.meta_mensal, 0)}</div></div>
-        <div class="card leitura" style="grid-column:1/-1"><h2>Anéis do núcleo</h2><div class="legenda-aneis">
+        <div class="card leitura" style="grid-column:1/-1"><h2>Anéis do núcleo</h2><p class="faint" style="margin:0 0 8px">Toque ou passe o mouse nos olhos dos anéis para ver os dados.</p><div class="legenda-aneis">
           <div><i style="background:#48e5ff;box-shadow:0 0 6px #48e5ff"></i>Externo: rumo ao marco de ${brl(m.proximo_marco, 0)}/mês<b>${pct(m.progresso_marco)}</b></div>
           ${m.maior_posicao ? `<div><i style="background:${m.maior_posicao.peso > m.maior_posicao.teto ? '#ff4d5e' : '#ffb347'}"></i>Médio: maior pelotão, ${esc(m.maior_posicao.ticker)}, contra o teto de ${m.maior_posicao.teto}%<b>${pct(m.maior_posicao.peso)}</b></div>` : ''}
-          <div><i style="background:#5cffb0"></i>Interno: pelotões em zona de ataque<b>${m.em_ataque} de ${t.n_ativos}</b></div>
+          <div><i style="background:#34f5a4;box-shadow:0 0 6px #34f5a4"></i>Interno: pelotões em zona de ataque<b>${m.em_ataque} de ${t.n_ativos}</b></div>
         </div></div>
       </div>
     </div>
@@ -279,6 +255,7 @@ function cockpit() {
     </section>
     ${s.alertas.length ? `<section><h2>Condições</h2>${s.alertas.map(a => `<div class="alert ${a.nivel}"><span>${a.nivel === 'critico' ? '▲' : a.nivel === 'atencao' ? '●' : 'ℹ'}</span><span>${esc(a.texto)}</span></div>`).join('')}</section>` : ''}
     <section class="card"><h2>Fluxo de proventos · ${new Date().getFullYear()}</h2>${calendarChart(s.calendario)}</section>`);
+  ligarOphanim(s);
 }
 
 // ───────── posições ─────────

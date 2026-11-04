@@ -16,6 +16,19 @@ Centro de comando **privado** da carteira INSA Dividend Army. É a sucessora do 
 | Peso do app | 412 KB de JS | 35 KB (12 KB comprimido) |
 | Hospedagem | Presa ao Manus | Sua conta Cloudflare (plano gratuito) |
 
+## Novidades da 1.8 · Núcleo Ophanim
+
+- **Cockpit:** o núcleo virou "rodas dentro de rodas", com três anéis segmentados que giram em sentidos opostos.
+  - Interno (verde): pelotões em zona de ataque.
+  - Médio (âmbar): maior pelotão, com a marca do teto.
+  - Externo (ciano): rumo ao marco.
+- **Olhos (nós de dados):** pulsam nos anéis. No mouse ou no toque, o anel desacelera até parar e abre um painel holográfico.
+  - Anel interno: um olho por pelotão, com zona, preço, PM, teto e variação do dia.
+  - Anel médio: os maiores pesos.
+  - Anel externo: marco, renda, meta final, próximo aporte e Magic Number.
+- **Leve:** cada anel é girado pela GPU, o brilho fica numa camada parada, e tudo para com a janela escondida ou com "reduzir movimento" ligado.
+- **React:** `componentes/OphanimCore.tsx` traz o mesmo núcleo em React + Tailwind + framer-motion, para usar em outros projetos.
+
 ## Novidades da 1.7 · M.A.N.U.E.L. econômico
 
 - **Respostas locais, 0 tokens:** o próprio motor do app responde as perguntas da carteira sem chamar a IA. Entram aqui a leitura do dia, onde aplicar um aporte, a zona de ataque, o Magic Number, os marcos e a projeção, a renda, a fila de oportunidades e um ativo específico.
