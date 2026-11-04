@@ -68,6 +68,18 @@ jobs:
           fi
           sed -i "s/COLE_AQUI_O_ID_DO_D1/$id/" wrangler.jsonc
           npx wrangler d1 migrations apply insa-command --remote
+      - name: Endereço workers.dev (cria na primeira vez)
+        if: steps.ok.outputs.seguir == 'sim'
+        run: |
+          api() { curl -sS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json" "$@"; }
+          base="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain"
+          atual=$(api "$base" | node -pe 'const j=JSON.parse(require("fs").readFileSync(0));(j.success&&j.result&&j.result.subdomain)||""')
+          if [ -n "$atual" ]; then echo "Subdomínio já existe: $atual.workers.dev"; exit 0; fi
+          for nome in insa-army "insa-army-$(openssl rand -hex 2)" "insa-army-$(openssl rand -hex 3)"; do
+            ok=$(api -X PUT "$base" --data "{\"subdomain\":\"$nome\"}" | node -pe 'JSON.parse(require("fs").readFileSync(0)).success')
+            if [ "$ok" = "true" ]; then echo "Subdomínio criado: $nome.workers.dev"; sleep 10; exit 0; fi
+          done
+          echo "::error::Não consegui criar o subdomínio workers.dev. Abra Workers & Pages no painel da Cloudflare e escolha um nome."; exit 1
       - name: Publicar a nuvem
         id: deploy
         if: steps.ok.outputs.seguir == 'sim'
