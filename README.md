@@ -16,6 +16,19 @@ Centro de comando **privado** da carteira INSA Dividend Army. É a sucessora do 
 | Peso do app | 412 KB de JS | 35 KB (12 KB comprimido) |
 | Hospedagem | Presa ao Manus | Sua conta Cloudflare (plano gratuito) |
 
+## Novidades da 1.9 · Voz J.A.R.V.I.S.
+
+- **Voz natural masculina:** a voz padrão passa a ser a do Gemini. A instrução de estilo pede português do Brasil, um mordomo digital elegante, humor seco e um ritmo fluido.
+  - Há oito timbres masculinos, e Charon é o padrão.
+  - A voz do aparelho continua como alternativa grátis e offline, com escolha da voz em Ajustes, guardada só naquele aparelho.
+- **Leitura sem tropeços:** antes de falar, o texto é preparado.
+  - Valores em dinheiro viram "reais e centavos", "/mês" vira "por mês" e "%" vira "por cento".
+  - Siglas como PM e DY são lidas por extenso, e tickers são separados ("BTLG 11").
+  - Marcadores, símbolos e quebras de linha deixam de causar pausas.
+  - Na voz do aparelho, a fala é dividida só em frases completas.
+- **Humor:** o M.A.N.U.E.L. ganhou a personalidade de J.A.R.V.I.S., com uma tirada curta no fim das respostas, nunca no lugar dos dados. Isso vale para as respostas locais e para as da IA.
+- Ouvir de novo a mesma resposta não gera outra chamada, e Ajustes tem o botão "Testar voz".
+
 ## Novidades da 1.8 · Núcleo Ophanim
 
 - **Cockpit:** o núcleo virou "rodas dentro de rodas": três anéis neon que giram em sentidos opostos, com esferas-olho e chamadas em cotovelo até os cantos (valores com ícone de olho, como num HUD).

@@ -7,6 +7,8 @@
 //  - A IA nunca grava nada: ela PROPÕE lançamentos; só o clique do dono em "Confirmar" grava.
 //  - Nenhuma ordem é enviada à corretora.
 
+import { paraFala, ESTILO_VOZ } from './fala.ts';
+
 export type Fetch = typeof fetch;
 
 export interface Toolkit {
@@ -119,7 +121,8 @@ export async function dossie(tk: Toolkit, extras: { estrategia?: any; regras?: s
 
 function sistema(dossieTexto: string) {
   return `Você é M.A.N.U.E.L., oficial de inteligência do INSA Dividend Army, assistente da carteira de dividendos (B3) do Senhor, brasileiro que mora em Portugal.
-- Português do Brasil, trata por "Senhor", direto e preciso. Até ~8 linhas, números em R$, sem floreio.
+- Português do Brasil, trata por "Senhor", direto e preciso. Até ~8 linhas, números em R$.
+- Personalidade de J.A.R.V.I.S.: elegante, leal, humor seco e ironia britânica sutil. No máximo uma tirada curta por resposta, nunca no lugar do dado; em perdas ou riscos, sóbrio.
 - Use ferramentas para contas e fatos atuais; nunca invente preço, data-com ou provento. Pesquise só quando o dado não está no dossiê.
 - Siga as regras do dossiê (ativo mais atrasado, nunca vender para realocar). Se o Senhor pedir algo contra elas, aponte o conflito e deixe a decisão com ele.
 - Algo que JÁ aconteceu (comprou, recebeu, aportou) → propor_lancamento e diga que ele precisa clicar em "Confirmar". Nunca diga que gravou.
@@ -307,12 +310,12 @@ export async function pesquisar(pergunta: string, key: string, modelo: string, f
 /** Voz natural (Gemini TTS). Devolve WAV (PCM 16 bits, 24 kHz, mono). */
 export async function voz(texto: string, key: string, voice: string, f: Fetch) {
   const { tts } = await modelosGemini(key, f);
-  const limpo = texto.replace(/[*_`#>]/g, '').replace(/\[(.+?)\]\(.+?\)/g, '$1').slice(0, 1500);
+  const limpo = paraFala(texto, 1500);
   const r = await f(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(tts)}:generateContent`, {
     method: 'POST', signal: AbortSignal.timeout(60000),
     headers: { 'x-goog-api-key': key, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      contents: [{ role: 'user', parts: [{ text: `Leia em português do Brasil, com voz calma, firme e respeitosa de um oficial de inteligência: ${limpo}` }] }],
+      contents: [{ role: 'user', parts: [{ text: `${ESTILO_VOZ}\n\n${limpo}` }] }],
       generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice || 'Charon' } } } },
     }),
   });

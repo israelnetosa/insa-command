@@ -1,5 +1,6 @@
 // INSA Command · interface (PWA). Sem frameworks, sem rastreadores.
 import { ophanim, ligarOphanim } from './ophanim.js';
+import { paraFala, VOZES_MASCULINAS } from '../src/fala.ts';
 
 const $app = document.getElementById('app');
 const CACHE_KEY = 'insa_state_v1';
@@ -468,11 +469,12 @@ function ajustes() {
             <label>Consultas à IA por dia<input name="limite_diario" type="number" min="1" max="1000"></label>
             <label>Teto de tokens por dia<input name="limite_tokens" type="number" min="5000" max="5000000" step="5000"></label>
             <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="economico" style="width:auto;min-height:0"> Modo econômico (respostas locais, cache e modelos mais baratos)</label>
-            <label>Voz<select name="voz_motor"><option value="windows">Windows (grátis, offline)</option><option value="gemini">Gemini natural (usa a chave)</option><option value="desligada">Desligada</option></select></label>
-            <label>Voz Gemini<select name="voz_nome">${VOZES_GEMINI.map(v => `<option>${v}</option>`).join('')}</select></label>
+            <label>Voz<select name="voz_motor"><option value="gemini">Natural J.A.R.V.I.S. (Gemini, recomendada)</option><option value="windows">Voz do aparelho (grátis, offline)</option><option value="desligada">Desligada</option></select></label>
+            <label>Timbre (natural)<select name="voz_nome">${VOZES_MASCULINAS.map(([v, d]) => `<option value="${v}">${v} · ${d}</option>`).join('')}</select></label>
+            <label>Voz do aparelho (só neste aparelho)<select id="vozap"><option value="">automática (masculina, se houver)</option></select></label>
             <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="fala_auto" style="width:auto;min-height:0"> Falar as respostas automaticamente</label>
           </form>
-          <div class="actions"><button class="btn ghost" id="cfgsave">Salvar configuração</button></div></details></div>
+          <div class="actions"><button class="btn ghost" id="cfgsave">Salvar configuração</button><button class="btn ghost" id="voztest">Testar voz</button></div></details></div>
       <div class="card"><h2>Backup</h2><p class="muted">${DESK ? 'Seus dados ficam só neste computador. Faça cópias regulares.' : 'Exporta todo o razão, ativos e configuração em JSON.'}</p><div class="actions"><button class="btn ghost" id="exp">Exportar JSON</button>${DESK ? '<button class="btn ghost" id="dbbak">Copiar banco completo</button><button class="btn ghost" id="dbdir">Abrir pasta de dados</button>' : ''}</div></div>
       ${DESK ? `<div class="card"><h2>Nuvem e celular</h2><p class="muted">Envia a sua carteira para a sua nuvem (Cloudflare) e passa a usar os mesmos dados no PC e no celular. Os dados locais ficam guardados como cópia.</p>
           <form id="nuvemf"><label>Endereço da nuvem<input name="url" type="url" placeholder="https://insa-command.SEU-NOME.workers.dev" required></label>
@@ -548,6 +550,21 @@ function ajustes() {
     const body = { provedor: cf.provedor.value, modeloClaude: cf.modeloClaude.value.trim(), modeloGemini: cf.modeloGemini.value.trim() || 'auto',
       limite_diario: Number(cf.limite_diario.value), limite_tokens: Number(cf.limite_tokens.value), economico: cf.economico.checked, voz_motor: cf.voz_motor.value, voz_nome: cf.voz_nome.value, fala_auto: cf.fala_auto.checked };
     await api('/api/manuel/config', { method: 'POST', body }); toast('Configuração do M.A.N.U.E.L. salva.');
+    if (CONV) CONV.config = { ...CONV.config, ...body };
+  });
+  // vozes instaladas no aparelho (pt-BR); a escolha fica guardada só neste aparelho
+  const vozap = document.getElementById('vozap');
+  const listarVozes = () => { if (!vozap || !('speechSynthesis' in window)) return;
+    const vs = speechSynthesis.getVoices().filter(v => /^pt(-|_)BR/i.test(v.lang));
+    let sel = ''; try { sel = localStorage.getItem('insa.voz.aparelho') || ''; } catch {}
+    vozap.innerHTML = '<option value="">automática (masculina, se houver)</option>' + vs.map(v => `<option value="${esc(v.name)}" ${v.name === sel ? 'selected' : ''}>${esc(v.name)}</option>`).join(''); };
+  listarVozes(); if ('speechSynthesis' in window) speechSynthesis.onvoiceschanged = listarVozes;
+  vozap?.addEventListener('change', () => { try { localStorage.setItem('insa.voz.aparelho', vozap.value); } catch {} });
+  document.getElementById('voztest')?.addEventListener('click', async () => {
+    const cf = document.getElementById('cfgf');
+    if (!CONV) { try { CONV = await api('/api/manuel/conversa'); } catch {} }
+    if (CONV) CONV.config = { ...CONV.config, voz_motor: cf.voz_motor.value, voz_nome: cf.voz_nome.value };
+    falar(`Às suas ordens, Senhor. Patrimônio em ${brl(S?.totais?.patrimonio ?? 0)}, renda estimada de ${brl(S?.totais?.renda_mes_estimada ?? 0)}/mês. Os dividendos seguem trabalhando, mesmo quando o Senhor dorme.`);
   });
   api('/api/audit').then(rows => { document.getElementById('aud').innerHTML = rows.slice(0, 30).map(r => `${esc(r.em)} · ${esc(r.acao)}`).join('<br>') || 'vazia'; }).catch(() => {});
 }
@@ -729,7 +746,6 @@ function migracao() {
 
 // ───────── M.A.N.U.E.L. · console ─────────
 let CONV = null, AUDIO = null;
-const VOZES_GEMINI = ['Charon', 'Orus', 'Fenrir', 'Iapetus', 'Algenib', 'Kore', 'Aoede', 'Puck'];
 function md(t) {
   const linhas = esc(t).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`([^`]+)`/g, '<code>$1</code>').split('\n');
   let out = '', lista = false;
@@ -790,28 +806,45 @@ function holoEstado(e) {
   h.classList.remove('pensando', 'falando'); if (e) h.classList.add(e);
   const t = document.getElementById('estado'); if (t) t.textContent = { pensando: 'Analisando', falando: 'Transmitindo' }[e] || 'Em prontidão';
 }
+const AUDIO_CACHE = new Map();   // mesma fala tocada de novo não gasta outra chamada
 function falar(texto) {
   pararFala();
   const cfg = CONV?.config || {};
   if (cfg.voz_motor === 'desligada') return;
-  const limpo = texto.replace(/[*_`#>]/g, '');
+  const limpo = paraFala(texto);
+  if (!limpo) return;
   if (cfg.voz_motor === 'gemini' && CONV?.chaves?.gemini) {
-    fetch('/api/manuel/voz', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ texto: limpo }) })
+    const chave = (cfg.voz_nome || '') + '|' + limpo;
+    holoEstado('pensando');
+    const pronto = AUDIO_CACHE.get(chave) ?? fetch('/api/manuel/voz', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ texto: limpo, voz: cfg.voz_nome }) })
       .then(r => r.ok ? r.blob() : r.json().then(j => Promise.reject(new Error(j.erro))))
-      .then(b => { AUDIO = new Audio(URL.createObjectURL(b)); AUDIO.onplay = () => holoEstado('falando'); AUDIO.onended = AUDIO.onpause = () => holoEstado(null); AUDIO.play(); })
-      .catch(e => { toast('Voz natural indisponível: ' + e.message + ' Usando a voz do Windows.'); falarWindows(limpo); });
+      .then(b => { const u = URL.createObjectURL(b); if (AUDIO_CACHE.size > 20) AUDIO_CACHE.delete(AUDIO_CACHE.keys().next().value); AUDIO_CACHE.set(chave, Promise.resolve(u)); return u; });
+    pronto.then(u => { AUDIO = new Audio(u); AUDIO.onplay = () => holoEstado('falando'); AUDIO.onended = AUDIO.onpause = () => holoEstado(null); return AUDIO.play(); })
+      .catch(e => { AUDIO_CACHE.delete(chave); toast('Voz natural indisponível agora (' + e.message + '). Usando a voz do aparelho.'); falarAparelho(limpo); });
     return;
   }
-  falarWindows(limpo);
+  falarAparelho(limpo);
 }
-function falarWindows(texto) {
+// Voz do aparelho: uma fala só (sem picotar por linha), voz masculina pt-BR quando existir, ritmo natural
+function falarAparelho(texto) {
   if (!('speechSynthesis' in window)) return;
-  const u = new SpeechSynthesisUtterance(texto.slice(0, 3000));
   const vs = speechSynthesis.getVoices().filter(v => /^pt(-|_)BR/i.test(v.lang));
-  u.voice = vs.find(v => /antonio/i.test(v.name)) || vs.find(v => /daniel|male|masculin/i.test(v.name)) || vs[0] || null;
-  u.lang = 'pt-BR'; u.rate = 1.02;
-  u.onstart = () => holoEstado('falando'); u.onend = u.onerror = () => holoEstado(null);
-  speechSynthesis.speak(u);
+  let escolhida = ''; try { escolhida = localStorage.getItem('insa.voz.aparelho') || ''; } catch {}
+  const voz = vs.find(v => v.name === escolhida)
+    || vs.find(v => /antonio|daniel|ptd|male|masculin|homem/i.test(v.name) && !/female|feminin/i.test(v.name))
+    || vs.find(v => /natural|online|neural/i.test(v.name)) || vs[0] || null;
+  // o Chrome corta falas longas: divide só em frases completas e encadeia sem pausas extras
+  const frases = texto.match(/[^.!?]+[.!?]+|\S[^.!?]*$/g) || [texto];
+  const blocos = []; let atual = '';
+  for (const f of frases) { if ((atual + f).length > 220 && atual) { blocos.push(atual); atual = f; } else atual += f; }
+  if (atual.trim()) blocos.push(atual);
+  blocos.forEach((b, k) => {
+    const u = new SpeechSynthesisUtterance(b.trim());
+    u.voice = voz; u.lang = 'pt-BR'; u.rate = 1; u.pitch = voz && /antonio|daniel|ptd|male|masculin/i.test(voz.name) ? 1 : 0.85;
+    if (k === 0) u.onstart = () => holoEstado('falando');
+    if (k === blocos.length - 1) u.onend = u.onerror = () => holoEstado(null);
+    speechSynthesis.speak(u);
+  });
 }
 function pararFala() { try { speechSynthesis.cancel(); } catch {} if (AUDIO) { AUDIO.pause(); AUDIO = null; } holoEstado(null); }
 
@@ -828,7 +861,7 @@ async function manuel() {
       <span class="chip ${semChave ? '' : 'open'}"><i class="dot ${semChave ? '' : 'on'}"></i>${semChave ? 'sem IA' : ativo + (c.chaves.claude && c.chaves.gemini ? ' + reserva' : '')}</span>
       <span class="faint">pesquisa: ${c.chaves.gemini ? 'Gemini + Google Search' : 'indisponível (sem chave Gemini)'}</span>
       <span class="faint">hoje: ${c.uso.locais || 0} locais (0 tokens) · IA ${c.uso.chamadas}/${c.config.limite_diario} · ${((c.uso.entrada + c.uso.saida) / 1000).toFixed(1)}k/${Math.round((c.config.limite_tokens || 150000) / 1000)}k tokens</span>
-      <span class="faint" style="margin-left:auto">voz: ${esc({ windows: 'Windows', gemini: 'Gemini natural', desligada: 'desligada' }[c.config.voz_motor])}</span>
+      <span class="faint" style="margin-left:auto">voz: ${esc({ windows: 'do aparelho', gemini: 'J.A.R.V.I.S. · ' + (c.config.voz_nome || 'Charon'), desligada: 'desligada' }[c.config.voz_motor])}</span>
       <button class="btn ghost sm" id="parar">Parar voz</button><button class="btn ghost sm" id="limpar">Limpar conversa</button>
     </div>
     <div class="console">

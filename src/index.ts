@@ -5,6 +5,7 @@ import { handleAuth, currentSession, isConfigured, json, type Env } from './auth
 import { buildState, replay, planoCompras, faseAtual, LedgerError, type Movement } from './engine';
 import { conversar, voz, explicarErro, CONFIG_PADRAO, type Toolkit, type IAConfig } from './manuel';
 import { responderLocal, normalizar } from './local';
+import { VOZES_MASCULINAS } from './fala.ts';
 import { refreshQuotes, liveRefresh, emPregao, pregao, INDICES, fetchQuote } from './market';
 import { seedMovements, seedAssets, seedSettings, validarMigracao } from './seed';
 
@@ -83,7 +84,14 @@ async function audit(env: Env, acao: string, dados?: unknown) {
 async function lerConfigIA(env: Env) {
   const r = await env.DB.prepare(`SELECT valor FROM settings WHERE chave = 'ia_config'`).first<{ valor: string }>();
   const c = r ? JSON.parse(r.valor) : {};
-  return { ...CONFIG_PADRAO, limite_diario: 60, limite_tokens: 150000, voz_motor: 'windows', voz_nome: 'Charon', fala_auto: false, ...c } as IAConfig & { limite_diario: number; limite_tokens: number; voz_motor: string; voz_nome: string; fala_auto: boolean };
+  // 1.9: a voz passa a ser a natural masculina do Gemini (estilo J.A.R.V.I.S.); uma vez só, depois vale a escolha do dono
+  if (!c.voz_v2) {
+    c.voz_v2 = true;
+    if (env.GEMINI_API_KEY && c.voz_motor !== 'desligada') c.voz_motor = 'gemini';
+    if (!VOZES_MASCULINAS.some(([v]) => v === c.voz_nome)) c.voz_nome = 'Charon';
+    if (r) await env.DB.prepare(`UPDATE settings SET valor = ? WHERE chave = 'ia_config'`).bind(JSON.stringify(c)).run();
+  }
+  return { ...CONFIG_PADRAO, limite_diario: 60, limite_tokens: 150000, voz_motor: env.GEMINI_API_KEY ? 'gemini' : 'windows', voz_nome: 'Charon', fala_auto: false, ...c } as IAConfig & { limite_diario: number; limite_tokens: number; voz_motor: string; voz_nome: string; fala_auto: boolean };
 }
 const hojeISO = () => new Date().toISOString().slice(0, 10);
 
@@ -395,6 +403,7 @@ async function api(req: Request, env: Env, url: URL): Promise<Response> {
       voz_motor: ['windows', 'gemini', 'desligada'].includes(b.voz_motor) ? b.voz_motor : atual.voz_motor,
       voz_nome: /^[A-Za-z]{2,20}$/.test(b.voz_nome ?? '') ? b.voz_nome : atual.voz_nome,
       fala_auto: typeof b.fala_auto === 'boolean' ? b.fala_auto : atual.fala_auto,
+      voz_v2: true,
     };
     await env.DB.prepare(`INSERT OR REPLACE INTO settings (chave, valor) VALUES ('ia_config', ?)`).bind(JSON.stringify(novo)).run();
     return json(novo);

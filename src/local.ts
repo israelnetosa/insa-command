@@ -30,6 +30,28 @@ export function lerValor(s: string): number | null {
 const PEDE_IA = /\b(noticia|mercado|o que (voce )?acha|fato relevante|resultado trimestral|balanco|data.?com|anunci|pesquis|por ?que|opiniao|vale a pena|compar|setor|macro|selic|juro|inflacao|ipca|guidance|internet|fonte|explique|explica|risco de|cenario|deveria|recomenda|melhor fii|melhor acao|analise (completa|profunda|fundamentalista))/;
 const TICKER = /\b([a-z]{4}\d{1,2})\b/g;
 
+// Humor de J.A.R.V.I.S.: uma tirada curta no fim, nunca no lugar do dado. Varia por dia e pergunta, sem sorteio.
+const TIRADAS: Record<string, string[]> = {
+  leitura_alta: ['Um dia verde, Senhor. Aproveitemos antes que o mercado mude de ideia.', 'O mercado acordou de bom humor. Não vou perguntar o motivo.'],
+  leitura_baixa: ['Um dia vermelho, Senhor. Os dividendos, felizmente, não leem manchetes.', 'O mercado está dramático hoje. Nós seguimos o plano.'],
+  leitura: ['Tudo calmo no front, Senhor. Calmo demais, se me permite.', 'Sistemas nominais. O café fica por conta do Senhor.'],
+  simular_aporte: ['Distribuído com disciplina, Senhor. Nem um centavo para o ativo da moda.', 'Matemática fria, convicção quente.'],
+  zona: ['Pechinchas à vista, Senhor. Prometo não contar a ninguém.', 'O mercado está em promoção. Com moderação, como sempre.'],
+  magic_number: ['A bola de neve agradece cada cota, Senhor.', 'Cada cota a mais é um soldado que se paga sozinho.'],
+  projecao: ['Paciência e aportes, Senhor. Os juros compostos cuidam do resto, sem pedir aumento.', 'É projeção, não profecia. Mas gosto dos números.'],
+  proximos_passos: ['Um passo de cada vez, Senhor. De preferência, todo mês.', 'O plano é simples. O difícil é não inventar moda.'],
+  renda: ['Renda passiva: o único salário que não pede reunião às 9h.', 'Pequena hoje, Senhor. Os juros compostos têm senso de humor lento.'],
+  varrer_oportunidades: ['O mais atrasado primeiro, Senhor. Democracia de carteira.', 'Fila organizada. Ninguém fura.'],
+  focar_ativo: ['Dados na mesa, Senhor. A decisão é sua, como de costume.'],
+  propor_lancamento: ['Eu preparo, o Senhor assina. Divisão de trabalho clássica.'],
+  requer_ia: ['Para opiniões, preciso consultar meus colegas na nuvem. Eles cobram por palavra.'],
+};
+function comTirada(resposta: string, chave: string, t: string, agora: Date) {
+  const lista = TIRADAS[chave]; if (!lista?.length) return resposta;
+  const n = [...(t + agora.toISOString().slice(0, 10))].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
+  return `${resposta}\n${lista[n % lista.length]}`;
+}
+
 function hojeBRT(agora: Date) { return new Date(agora.getTime() - 3 * 3600_000).toISOString().slice(0, 10); }
 
 /**
@@ -40,7 +62,7 @@ export async function responderLocal(texto: string, tk: Toolkit, agora = new Dat
   const t = normalizar(texto);
   if (!t || t.startsWith('ia:') || t.startsWith('/ia')) return null;   // o Senhor pediu a IA explicitamente
   const ok = (resposta: string, ferramenta: string, propostas: number[] = []): Resultado => ({
-    texto: resposta, provedor: 'Local', modelo: 'motor do app', propostas, fontes: [],
+    texto: comTirada(resposta, ferramenta, t, agora), provedor: 'Local', modelo: 'motor do app', propostas, fontes: [],
     ferramentas: [{ ferramenta, ok: true, resumo: '0 tokens' }], uso: { entrada: 0, saida: 0 },
   });
 
@@ -199,7 +221,7 @@ export async function responderLocal(texto: string, tk: Toolkit, agora = new Dat
       alta && baixa && alta !== baixa ? `- Destaques: ${alta.ticker} ${pct(alta.var_dia)}, ${baixa.ticker} ${pct(baixa.var_dia)}.` : '',
       `- ${s.missao.em_ataque} pelotão(ões) em zona de ataque. Magic Number: próximo ${s.magic?.proximo ?? '—'}.`,
       (s.alertas || []).length ? `- Alertas: ${(s.alertas || []).slice(0, 3).map((a: any) => a.texto).join(' ')}` : '',
-    ].filter(Boolean).join('\n'), 'leitura');
+    ].filter(Boolean).join('\n'), tot.resultado_dia > 0.5 ? 'leitura_alta' : tot.resultado_dia < -0.5 ? 'leitura_baixa' : 'leitura');
   }
   if (!estrito) return null;
   // Modo econômico: sem "ia:" a IA nunca é chamada. Devolve o panorama com os próximos passos.
