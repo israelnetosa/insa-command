@@ -109,6 +109,7 @@ function updBanner() {
 }
 
 // ───────── moldura ─────────
+const PRINCIPAIS = ['cockpit', 'manuel', 'radar', 'posicoes'];
 const NAV = [
   ['cockpit', '01', 'Cockpit', '◎'], ['manuel', '02', 'M.A.N.U.E.L.', '◈'], ['radar', '03', 'Radar', '◉'], ['posicoes', '04', 'Pelotões', '▤'],
   ['registrar', '05', 'Registrar', '＋'], ['estrategia', '06', 'Estratégia', '◆'], ['plano', '07', 'Fases e regras', '◇'], ['razao', '08', 'Livro-razão', '≣'], ['ajustes', '09', 'Ajustes', '⚙'],
@@ -121,11 +122,21 @@ function frame(view, inner) {
     <span class="feed" title="${esc(feed.title)}"><i class="dot ${feed.cls}"></i>${esc(feed.label)}</span>
     <div class="clock"><b id="clk">--:--:--</b><small id="clkd"></small></div></header>${fita()}</div>
   <div class="shell">
-    <nav class="side" aria-label="Seções">${NAV.map(([id, n, t]) => `<a href="#/${id}" class="${view === id ? 'on' : ''}" ${view === id ? 'aria-current="page"' : ''}><span>${n}</span>${t}</a>`).join('')}</nav>
+    <nav class="side" aria-label="Seções">${NAV.map(([id, n, t, i]) => `<a href="#/${id}" class="${view === id ? 'on' : ''}" ${view === id ? 'aria-current="page"' : ''}><span>${n}</span><i aria-hidden="true">${i}</i><b>${t}</b></a>`).join('')}</nav>
     <main id="conteudo">${updBanner()}${offline ? `<div class="banner">Sem conexão. Mostrando os dados de ${esc(new Date(S?.gerado_em).toLocaleString('pt-BR'))}.</div>` : ''}${inner}
       <p class="footer">Conteúdo informativo, não é recomendação de investimento. Confirme preços e datas-com antes de enviar ordens. Nenhuma ordem é enviada à corretora por este app.</p></main>
   </div>
-  <nav class="tabs" aria-label="Seções">${NAV.filter(n => !['razao', 'plano', 'registrar'].includes(n[0])).map(([id, , t, i]) => `<a href="#/${id}" class="${view === id ? 'on' : ''}"><i>${i}</i>${t}</a>`).join('')}</nav>`;
+  <nav class="tabs" aria-label="Seções">${NAV.filter(n => PRINCIPAIS.includes(n[0])).map(([id, , t, i]) => `<a href="#/${id}" class="${view === id ? 'on' : ''}" ${view === id ? 'aria-current="page"' : ''}><i aria-hidden="true">${i}</i>${id === 'manuel' ? 'Manuel' : t}</a>`).join('')}
+    <button type="button" class="${PRINCIPAIS.includes(view) ? '' : 'on'}" id="mais" aria-haspopup="dialog" aria-expanded="false"><i aria-hidden="true">☰</i>Mais</button></nav>
+  ${['cockpit', 'posicoes', 'radar'].includes(view) ? '<a class="fab" href="#/registrar" aria-label="Registrar lançamento">＋</a>' : ''}
+  <div class="folha" id="folha" hidden><div class="folha-fundo" data-fecha></div><div class="folha-painel" role="dialog" aria-label="Mais seções">
+    <div class="folha-alca" aria-hidden="true"></div>
+    ${NAV.filter(n => !PRINCIPAIS.includes(n[0])).map(([id, , t, i]) => `<a href="#/${id}" class="${view === id ? 'on' : ''}"><i aria-hidden="true">${i}</i>${t}</a>`).join('')}
+  </div></div>`;
+  const folha = document.getElementById('folha'), mais = document.getElementById('mais');
+  const abreFolha = (abrir) => { folha.hidden = !abrir; mais.setAttribute('aria-expanded', String(abrir)); };
+  mais.onclick = () => abreFolha(folha.hidden);
+  folha.addEventListener('click', (e) => { if (e.target.closest('[data-fecha], a')) abreFolha(false); });
   tick();
   const ht = document.getElementById('hudtop'); if (ht) document.documentElement.style.setProperty('--topo', ht.offsetHeight + 'px');
   document.getElementById('updnow')?.addEventListener('click', () => (DESK || SHELL).installUpdate());
@@ -401,11 +412,17 @@ async function razao() {
     if (m.tipo === 'desdobramento' || m.tipo === 'grupamento') return `fator ${nf(m.qtd, 0)}`;
     return brl(m.valor);
   };
-  document.getElementById('lst').innerHTML = movs.length ? `<div class="table-wrap"><table><thead><tr><th>Data</th><th>Tipo</th><th>Ativo</th><th>Detalhe</th><th>Origem</th><th></th></tr></thead><tbody>
+  document.getElementById('lst').innerHTML = movs.length ? `<div class="table-wrap tabela-razao"><table><thead><tr><th>Data</th><th>Tipo</th><th>Ativo</th><th>Detalhe</th><th>Origem</th><th></th></tr></thead><tbody>
     ${movs.map(m => `<tr style="${m.anulado ? 'opacity:.45;text-decoration:line-through' : ''}"><td>${esc(m.data.split('-').reverse().join('/'))}</td><td>${esc(m.tipo.replace('_', ' '))}${m.subtipo ? ` · ${esc(m.subtipo)}` : ''}</td>
       <td>${esc(m.ticker || '—')}</td><td class="num">${desc(m)}${m.estimado ? ' <span class="tag est">est.</span>' : ''}${m.nota ? `<span class="nm" title="${esc(m.nota)}">${esc(m.nota.slice(0, 40))}</span>` : ''}</td>
       <td class="faint">${esc(m.origem)}</td><td>${m.anulado ? 'anulado' : `<button class="btn danger" style="min-height:32px;padding:4px 10px" data-anular="${m.id}">Anular</button>`}</td></tr>`).join('')}
-    </tbody></table></div><p class="faint" style="margin-top:10px">Nada é apagado: lançamentos errados são anulados e ficam na trilha.</p>` : '<div class="card empty">Sem lançamentos.</div>';
+    </tbody></table></div>
+    <div class="cartoes-razao">${movs.map(m => `<div class="card tight rz ${m.anulado ? 'anulado' : ''}">
+      <div><b>${esc(m.tipo.replace('_', ' '))}${m.ticker ? ' · ' + esc(m.ticker) : ''}</b><span class="faint">${esc(m.data.split('-').reverse().join('/'))} · ${esc(m.origem)}</span></div>
+      <div class="r num">${desc(m)}${m.estimado ? ' <span class="tag est">est.</span>' : ''}</div>
+      ${m.nota ? `<div class="faint rz-nota">${esc(m.nota)}</div>` : ''}
+      <div class="r">${m.anulado ? '<span class="faint">anulado</span>' : `<button class="btn danger sm" data-anular="${m.id}">Anular</button>`}</div>
+    </div>`).join('')}</div><p class="faint" style="margin-top:10px">Nada é apagado: lançamentos errados são anulados e ficam na trilha.</p>` : '<div class="card empty">Sem lançamentos.</div>';
   document.querySelectorAll('[data-anular]').forEach(b => b.onclick = async () => {
     if (!confirm('Anular este lançamento? Posições e caixa serão recalculados.')) return;
     try { await api(`/api/movements/${b.dataset.anular}/anular`, { method: 'POST', body: {} }); toast('Lançamento anulado.'); await load(); razao(); }
@@ -610,14 +627,20 @@ async function liveTick(forcar) {
       <div class="ival num ${flash(r)}">${fmtIdx(r)}</div>
       <div class="num ${sign(r.var)}">${r.var == null ? '—' : (r.var > 0 ? '+' : '') + pct(r.var, 2)}</div>
       ${spark(r.serie, r.fechamento_ant)}<div class="faint">${esc(atrasoTxt(r))}</div></div>`).join('')}</div></section>
-    <section><h2>Pelotões</h2><div class="table-wrap"><table><thead><tr><th>Ativo</th><th>Preço</th><th>Dia</th><th>R$ no dia</th><th>Intradiário</th><th>Peso</th><th>Zona</th><th>Atraso</th></tr></thead><tbody>
+    <section><h2>Pelotões</h2><div class="table-wrap tabela-radar"><table><thead><tr><th>Ativo</th><th>Preço</th><th>Dia</th><th>R$ no dia</th><th>Intradiário</th><th>Peso</th><th>Zona</th><th>Atraso</th></tr></thead><tbody>
       ${L.ativos.map(r => `<tr><td><span class="tk">${esc(r.ticker)}</span><span class="nm">${esc(r.nome)}</span></td>
         <td class="num ${flash(r)}">${r.preco == null ? '—' : brl(r.preco)}</td>
         <td class="num ${sign(r.var)}">${r.var == null ? '—' : (r.var > 0 ? '+' : '') + pct(r.var, 2)}</td>
         <td class="num ${sign(r.var_dia_valor)}">${r.var_dia_valor ? (r.var_dia_valor > 0 ? '+' : '') + brl(r.var_dia_valor) : '—'}</td>
         <td>${spark(r.serie, r.fechamento_ant, 110, 28)}</td><td class="num">${pct(r.peso)}</td>
         <td><span class="tag ${r.zona}">${esc(r.zona)}</span></td><td class="faint">${esc(atrasoTxt(r))}</td></tr>`).join('')}
-    </tbody></table></div></section>
+    </tbody></table></div>
+    <div class="cartoes-radar">${L.ativos.map(r => `<div class="card tight cr">
+      <div><span class="tk">${esc(r.ticker)}</span> <span class="tag ${r.zona}">${esc(r.zona)}</span><span class="nm faint">${esc(r.nome)}</span></div>
+      <div class="r"><b class="num ${flash(r)}">${r.preco == null ? '—' : brl(r.preco)}</b><span class="num ${sign(r.var)}">${r.var == null ? '—' : (r.var > 0 ? '+' : '') + pct(r.var, 2)}</span></div>
+      <div class="cr-spark">${spark(r.serie, r.fechamento_ant, 220, 30)}</div>
+      <div class="r"><span class="num ${sign(r.var_dia_valor)}">${r.var_dia_valor ? (r.var_dia_valor > 0 ? '+' : '') + brl(r.var_dia_valor) : '—'}</span><span class="faint">${pct(r.peso)} · ${esc(atrasoTxt(r))}</span></div>
+    </div>`).join('')}</div></section>
     <p class="faint">${esc(L.aviso)} Fontes: ${esc([...new Set(L.ativos.concat(L.indices).map(r => r.fonte).filter(Boolean))].join(', ') || '—')}. ${esc(pg.nota)}</p>`;
   document.getElementById('auto').onchange = (e) => { liveAuto = e.target.checked; };
   document.getElementById('liveref').onclick = (e) => { e.target.disabled = true; liveTick(true); };
@@ -831,8 +854,10 @@ async function manuel() {
   const f = document.getElementById('cf'), ta = f.t;
   // a conversa ocupa o espaço que sobrar, para a caixa de mensagem ficar sempre visível
   const ajustar = () => { if (!document.body.contains(th)) return removeEventListener('resize', ajustar);
-    const sobra = innerHeight - f.getBoundingClientRect().bottom - 12 + th.clientHeight;
-    th.style.maxHeight = Math.max(240, sobra) + 'px'; th.style.minHeight = Math.min(300, Math.max(240, sobra)) + 'px'; };
+    const tabs = document.querySelector('nav.tabs'); const reserva = 12 + (tabs && getComputedStyle(tabs).display !== 'none' ? tabs.offsetHeight : 0);
+    const sobra = innerHeight - f.getBoundingClientRect().bottom - reserva + th.clientHeight;
+    const min = innerHeight < 500 ? 140 : 220;
+    th.style.maxHeight = Math.max(min, sobra) + 'px'; th.style.minHeight = Math.min(300, Math.max(min, sobra)) + 'px'; };
   ajustar(); addEventListener('resize', ajustar);
   th.scrollTop = th.scrollHeight;
   const enviar = async (texto) => {

@@ -2,7 +2,7 @@
 // Roda o mesmo servidor do app web, mas local: banco SQLite na pasta do usuário,
 // protocolo interno insa:// (nenhuma porta de rede aberta) e chaves de IA cifradas pelo Windows (DPAPI).
 
-import { app, BrowserWindow, protocol, ipcMain, safeStorage, shell, Menu, dialog, Notification, session } from 'electron';
+import { app, BrowserWindow, protocol, ipcMain, safeStorage, shell, Menu, dialog, Notification, session, screen } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import { join, extname, normalize } from 'node:path';
 import { readFile, writeFile, mkdir, copyFile, readdir, stat } from 'node:fs/promises';
@@ -234,9 +234,31 @@ function wireIpc(lock: ReturnType<typeof createLock>) {
   });
 }
 
+// ───────── estado da janela: abre maximizada na 1ª vez e depois como o dono deixou ─────────
+type EstadoJanela = { x?: number; y?: number; width: number; height: number; maximizada: boolean; telaCheia?: boolean };
+const arqJanela = () => join(dataDir(), 'janela.json');
+function lerJanela(): EstadoJanela {
+  const padrao: EstadoJanela = { width: 1320, height: 880, maximizada: true };
+  try {
+    const e = JSON.parse(readFileSync(arqJanela(), 'utf8')) as EstadoJanela;
+    // só reaproveita a posição se ela ainda cabe num monitor ligado
+    const visivel = e.x != null && e.y != null && screen.getAllDisplays().some(d => {
+      const a = d.workArea; return e.x! >= a.x - 50 && e.y! >= a.y - 50 && e.x! < a.x + a.width - 100 && e.y! < a.y + a.height - 100;
+    });
+    return { ...padrao, ...e, ...(visivel ? {} : { x: undefined, y: undefined }) };
+  } catch { return padrao; }
+}
+function guardarJanela() {
+  if (!win || win.isDestroyed()) return;
+  const b = win.getNormalBounds();
+  const e: EstadoJanela = { x: b.x, y: b.y, width: b.width, height: b.height, maximizada: win.isMaximized(), telaCheia: win.isFullScreen() };
+  writeFile(arqJanela(), JSON.stringify(e)).catch(() => {});
+}
+
 function createWindow() {
+  const ej = lerJanela();
   win = new BrowserWindow({
-    width: 1320, height: 880, minWidth: 380, minHeight: 600,
+    x: ej.x, y: ej.y, width: ej.width, height: ej.height, minWidth: 380, minHeight: 560,
     backgroundColor: '#071016', title: 'INSA Command', autoHideMenuBar: true, show: false,
     icon: join(publicDir(), 'icons', 'icon-512.png'),
     webPreferences: {
@@ -246,7 +268,17 @@ function createWindow() {
       devTools: !app.isPackaged,
     },
   });
-  win.once('ready-to-show', () => win?.show());
+  win.once('ready-to-show', () => {
+    if (ej.maximizada) win?.maximize();
+    if (ej.telaCheia) win?.setFullScreen(true);
+    win?.show();
+  });
+  let tGuardar: NodeJS.Timeout | undefined;
+  const agendar = () => { clearTimeout(tGuardar); tGuardar = setTimeout(guardarJanela, 400); };
+  for (const ev of ['resize', 'move', 'maximize', 'unmaximize', 'enter-full-screen', 'leave-full-screen'] as const) win.on(ev as any, agendar);
+  win.on('close', guardarJanela);
+  // F11 alterna tela cheia (o app não tem menu, então o atalho é tratado aqui)
+  win.webContents.on('before-input-event', (_e, i) => { if (i.type === 'keyDown' && i.key === 'F11') win?.setFullScreen(!win.isFullScreen()); });
   // Se a janela travar ou o processo de desenho cair, recarrega sozinho (os dados ficam no banco local)
   let travas = 0;
   win.webContents.on('render-process-gone', (_e, d) => { if (d.reason !== 'clean-exit' && travas++ < 5) setTimeout(() => win?.webContents.reload(), 500); });
