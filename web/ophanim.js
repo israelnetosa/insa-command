@@ -65,7 +65,7 @@ export function ophanim(s) {
       </svg>
       <svg class="oph-olhos" viewBox="0 0 400 400">${a.olhos.map((o, j) => { const p = ophPolar(r, o.ang), rr = i === 0 ? 6.5 : 9;
         return `<g class="olho${o.apagado ? ' apagado' : ''}" data-i="${i}" data-j="${j}" transform="translate(${P(p.x)} ${P(p.y)})" tabindex="0" role="button" aria-label="${esc(o.titulo + ': ' + o.linhas.join(', '))}">
-          <circle r="16" fill="transparent"/><g class="olho-c" style="animation-delay:-${((i * 7 + j) * 0.37 % 2.6).toFixed(2)}s">
+          <circle r="16" fill="transparent"/><g class="olho-c">
           <circle r="${rr + 5}" fill="${a.cor}" opacity=".16"/>
           <circle r="${rr + 1.8}" fill="none" stroke="${a.cor}" stroke-width="1.6"/>
           <circle r="${rr}" fill="url(#oph-esfera${o.apagado ? 'x' : i})"/>
@@ -97,32 +97,28 @@ export function ophanim(s) {
     <div class="oph-painel" id="ophp" hidden></div></div>`;
 }
 
-let OPH_LOOP = 0;
+// Giro por animação CSS (roda no compositor, sem JavaScript por quadro): leve até em celular simples.
 export function ligarOphanim(s) {
   const raiz = document.getElementById('oph'); if (!raiz) return;
   const A = dadosOphanim(s), aneis = [...raiz.querySelectorAll('.oph-anel')].sort((a, b) => a.dataset.i - b.dataset.i);
-  const ang = [0, 0, 0], vel = [1, 1, 1], painel = document.getElementById('ophp');
-  const quieto = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  let ativo = null, ultimo = performance.now();
-  const posicionar = () => {
-    if (!ativo) return;
-    const p = ophPolar(OPH_R[ativo.i], A[ativo.i].olhos[ativo.j].ang + ang[ativo.i]);
-    if (raiz.clientWidth < 520) { painel.className = 'oph-painel doca'; painel.style.left = painel.style.top = ''; return; }
-    painel.className = 'oph-painel ' + (p.x < 200 ? 'esq' : 'dir');
-    painel.style.left = (p.x / 4) + '%'; painel.style.top = (p.y / 4) + '%';
-  };
+  const painel = document.getElementById('ophp');
+  aneis.forEach((el, i) => { el.style.animationDuration = Math.abs(A[i].volta) + 's'; el.style.animationDirection = A[i].volta < 0 ? 'reverse' : 'normal'; });
+  let ativo = null;
   const abrir = (i, j, fixo) => {
     const a = A[i], o = a.olhos[j];
     if (fixo && ativo?.fixo && ativo.i === i && ativo.j === j) return fechar(true);
     raiz.querySelectorAll('.olho.on').forEach(e => e.classList.remove('on'));
     raiz.querySelector(`.olho[data-i="${i}"][data-j="${j}"]`)?.classList.add('on');
+    aneis.forEach((el, k) => el.classList.toggle('parado', k === i));   // o anel observado para
     ativo = { i, j, fixo };
     painel.style.setProperty('--cor', a.cor);
-    painel.innerHTML = `<div class="oph-cab">${esc(a.nome)} · ${esc(a.desc)}</div><b>${esc(o.titulo)}</b>${raiz.clientWidth < 520 ? `<div>${o.linhas.map(esc).join(' · ')}</div>` : o.linhas.map(l => `<div>${esc(l)}</div>`).join('')}
+    painel.className = 'oph-painel doca';
+    painel.innerHTML = `<div class="oph-cab">${esc(a.nome)} · ${esc(a.desc)}</div><b>${esc(o.titulo)}</b><div>${o.linhas.map(esc).join(' · ')}</div>
       <div class="oph-barra"><em><i style="width:${Math.min(100, a.prog)}%"></i></em><span>${esc(a.valor)}</span></div>`;
-    painel.hidden = false; posicionar();
+    painel.hidden = false;
   };
-  const fechar = (forca) => { if (!ativo || (ativo.fixo && !forca)) return; ativo = null; painel.hidden = true; raiz.querySelectorAll('.olho.on').forEach(e => e.classList.remove('on')); };
+  const fechar = (forca) => { if (!ativo || (ativo.fixo && !forca)) return; ativo = null; painel.hidden = true;
+    raiz.querySelectorAll('.olho.on').forEach(e => e.classList.remove('on')); aneis.forEach(el => el.classList.remove('parado')); };
   raiz.querySelectorAll('.olho').forEach(g => {
     const i = +g.dataset.i, j = +g.dataset.j;
     g.addEventListener('pointerenter', e => { if (e.pointerType === 'mouse' && !ativo?.fixo) abrir(i, j, false); });
@@ -133,21 +129,4 @@ export function ligarOphanim(s) {
   });
   raiz.addEventListener('click', () => fechar(true));
   raiz.querySelectorAll('.oph-num').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); abrir(+b.dataset.anel, 0, true); }));
-  const id = ++OPH_LOOP;
-  const quadro = (agora) => {
-    if (id !== OPH_LOOP || !document.body.contains(raiz)) return;     // saiu do cockpit: o laço morre
-    const dt = Math.min(64, agora - ultimo) / 1000; ultimo = agora;
-    if (!document.hidden && !document.documentElement.classList.contains('pausado')) {
-      A.forEach((a, i) => {
-        const alvo = ativo ? (ativo.i === i ? 0 : 0.25) : 1;               // o anel focado para; os outros abrandam
-        vel[i] += (alvo - vel[i]) * Math.min(1, dt * 4);
-        ang[i] = (ang[i] + 360 / a.volta * vel[i] * dt) % 360;
-        aneis[i].style.transform = `rotate(${ang[i].toFixed(2)}deg)`;
-      });
-      posicionar();
-    }
-    requestAnimationFrame(quadro);
-  };
-  if (!quieto) requestAnimationFrame(quadro);
 }
-

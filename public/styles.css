@@ -162,17 +162,20 @@ section { margin-top: 24px; }
 .reator .centro-sub { font: 400 11px var(--mono); fill: var(--tx3); }
 .reator .anel-lbl { font: 600 10px var(--head); letter-spacing: .18em; text-transform: uppercase; }
 /* núcleo Ophanim: cada anel é uma camada girada pela GPU; o brilho fica numa subcamada parada (rasterizada uma vez) */
-.oph { position: relative; width: 100%; max-width: 460px; aspect-ratio: 1; margin: 0 auto; container-type: inline-size; }
-.oph-anel { position: absolute; inset: 0; pointer-events: none; will-change: transform; }
+.oph { position: relative; width: 100%; max-width: 460px; aspect-ratio: 1; margin: 0 auto; container-type: inline-size; overflow: hidden; overflow: clip; }
+.oph-anel { position: absolute; inset: 0; pointer-events: none; will-change: transform; animation: giro 40s linear infinite; }
+.oph-anel.parado { animation-play-state: paused; }
 .oph-anel svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .oph-arcos { will-change: transform; filter: drop-shadow(0 0 5px color-mix(in srgb, var(--cor) 65%, transparent)); }
 .olho { pointer-events: auto; cursor: pointer; outline: none; }
-.olho-c { transform-box: fill-box; transform-origin: center; animation: respira 2.6s ease-in-out infinite; transition: transform .25s; }
-.olho.apagado .olho-c { animation: none; opacity: .45; }
+.olho-c { transform-box: fill-box; transform-origin: center; transition: transform .25s; }
+/* respiração dos olhos: só opacidade da camada inteira (compositor), em vez de 21 animações que repintam o SVG */
+.oph-olhos { animation: respira-camada 2.6s ease-in-out infinite; will-change: opacity; }
+.olho.apagado .olho-c { opacity: .45; }
 .olho .mira { opacity: 0; }
-.olho.on .olho-c, .olho:focus-visible .olho-c { animation: none; transform: scale(1.45); opacity: 1; }
+.olho.on .olho-c, .olho:focus-visible .olho-c { transform: scale(1.45); opacity: 1; }
 .olho.on .mira, .olho:focus-visible .mira { opacity: 1; }
-@keyframes respira { 0%, 100% { transform: scale(1); opacity: .85; } 50% { transform: scale(1.18); opacity: 1; } }
+@keyframes respira-camada { 0%, 100% { opacity: .78; } 50% { opacity: 1; } }
 .oph-fixo { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; filter: drop-shadow(0 0 3px rgba(72,229,255,.5)); }
 .oph-nucleo { position: absolute; left: 50%; top: 50%; width: 39%; aspect-ratio: 1; transform: translate(-50%, -50%); display: grid; place-items: center; text-align: center;
   border-radius: 50%; border: 1.5px solid rgba(72,229,255,.55); pointer-events: none;

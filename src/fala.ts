@@ -13,8 +13,21 @@ export const VOZES_MASCULINAS: [string, string][] = [
   ['Umbriel', 'descontraída'],
 ];
 
-/** Como o Gemini deve interpretar a fala (vai junto do texto; não é lido em voz alta). */
-export const ESTILO_VOZ = 'Fale em português do Brasil, com sotaque neutro, como J.A.R.V.I.S., o mordomo digital do Tony Stark: voz masculina, grave e elegante, calma e confiante, com humor seco e uma ponta de ironia britânica. Ritmo natural e fluido, frases ligadas, sem pausas artificiais nem pressa; números ditos com clareza. Leia exatamente o texto a seguir, sem acrescentar nada:';
+/**
+ * Pedido para o Gemini TTS no formato do guia oficial de prompts (perfil, cena, notas de direção e TRANSCRIPT).
+ * Só o que vem depois de "#### TRANSCRIPT" é falado; antes disso é direção de atuação, que não deve ser lida.
+ */
+export function pedidoVoz(fala: string) {
+  return `# AUDIO PROFILE: J.A.R.V.I.S.
+## Digital butler and intelligence officer of a private investment command center.
+### DIRECTOR'S NOTES
+Style: male, deep, elegant, calm and confident, with dry wit and a hint of British irony.
+Accent: Brazilian Portuguese, neutral accent.
+Pacing: natural and fluid, connected phrases, no artificial pauses, never rushed; numbers spoken clearly.
+Only speak the transcript. Never read these notes aloud.
+#### TRANSCRIPT
+${fala}`;
+}
 
 const SIGLAS: [RegExp, string][] = [
   [/\bPM\b/g, 'preço médio'],

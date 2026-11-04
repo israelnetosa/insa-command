@@ -7,7 +7,7 @@
 //  - A IA nunca grava nada: ela PROPÕE lançamentos; só o clique do dono em "Confirmar" grava.
 //  - Nenhuma ordem é enviada à corretora.
 
-import { paraFala, ESTILO_VOZ } from './fala.ts';
+import { paraFala, pedidoVoz } from './fala.ts';
 
 export type Fetch = typeof fetch;
 
@@ -310,12 +310,12 @@ export async function pesquisar(pergunta: string, key: string, modelo: string, f
 /** Voz natural (Gemini TTS). Devolve WAV (PCM 16 bits, 24 kHz, mono). */
 export async function voz(texto: string, key: string, voice: string, f: Fetch) {
   const { tts } = await modelosGemini(key, f);
-  const limpo = paraFala(texto, 1500);
+  const limpo = paraFala(texto, 900);   // falas mais curtas saem mais rápido
   const r = await f(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(tts)}:generateContent`, {
     method: 'POST', signal: AbortSignal.timeout(60000),
     headers: { 'x-goog-api-key': key, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      contents: [{ role: 'user', parts: [{ text: `${ESTILO_VOZ}\n\n${limpo}` }] }],
+      contents: [{ role: 'user', parts: [{ text: pedidoVoz(limpo) }] }],
       generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice || 'Charon' } } } },
     }),
   });

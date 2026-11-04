@@ -28,6 +28,7 @@ Centro de comando **privado** da carteira INSA Dividend Army. É a sucessora do 
   - Na voz do aparelho, a fala é dividida só em frases completas.
 - **Humor:** o M.A.N.U.E.L. ganhou a personalidade de J.A.R.V.I.S., com uma tirada curta no fim das respostas, nunca no lugar dos dados. Isso vale para as respostas locais e para as da IA.
 - Ouvir de novo a mesma resposta não gera outra chamada, e Ajustes tem o botão "Testar voz".
+- **1.9.1:** a voz natural deixou de ler a instrução de estilo: o pedido segue o formato do guia do Gemini, em que só o trecho TRANSCRIPT é falado. O núcleo do cockpit passou a girar por animação CSS, sem JavaScript a cada quadro, e o uso da CPU parada caiu de ~63% para ~2% num celular simulado 4× mais lento.
 
 ## Novidades da 1.8 · Núcleo Ophanim
 

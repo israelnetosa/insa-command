@@ -16,3 +16,9 @@ test('limita o tamanho cortando em fim de frase', () => {
   const f = paraFala('Frase um bem comprida. '.repeat(100), 200);
   assert.ok(f.length <= 200 && f.endsWith('.'));
 });
+
+test('pedido de voz separa direção de atuação e texto falado', async () => {
+  const { pedidoVoz } = await import('../src/fala.ts');
+  const p = pedidoVoz('Às suas ordens, Senhor.');
+  assert.match(p, /### DIRECTOR'S NOTES[\s\S]*#### TRANSCRIPT\nÀs suas ordens, Senhor\.$/);
+});
