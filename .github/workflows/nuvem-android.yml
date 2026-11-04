@@ -102,7 +102,14 @@ jobs:
           rm -f segredos.json
       - name: Conferir a nuvem no ar
         if: steps.ok.outputs.seguir == 'sim'
-        run: curl -fsS "${{ steps.deploy.outputs.url }}/api/session"
+        run: |
+          # subdomínio novo: o certificado HTTPS pode levar alguns minutos para ficar pronto
+          for i in $(seq 1 30); do
+            if curl -fsS "${{ steps.deploy.outputs.url }}/api/session"; then echo; exit 0; fi
+            echo "aguardando o certificado ($i/30)…"; sleep 20
+          done
+          echo "::warning::A nuvem foi publicada mas ainda não respondeu. Normalmente fica pronta em alguns minutos."
+
 
   android:
     needs: nuvem
