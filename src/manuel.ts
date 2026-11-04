@@ -108,10 +108,11 @@ export async function dossie(tk: Toolkit, extras: { estrategia?: any; regras?: s
     `Patrimônio ${t.patrimonio} (ativos ${t.investido}, caixa ${t.caixa}); resultado ${t.resultado}; dia ${t.resultado_dia}; renda est. ${t.renda_mes_estimada}/mês; recebida 12m ${t.renda_12m_recebida}; DY ${t.dy_carteira}%; aporte mensal ${s.aporte_mensal}.`,
     `Missão: meta ${mi.meta_mensal}/mês; marco ${mi.proximo_marco} (${mi.progresso_marco}%); fase ${fase?.nome ?? '-'}; maior ${mi.maior_posicao?.ticker} ${mi.maior_posicao?.peso}% (teto ${mi.maior_posicao?.teto}%).`,
     `Posições (ticker qtd PM preço var_dia peso/alvo zona teto renda_mês magic; *=PM estimado):\n${linhas.join('\n')}`,
+    `Fila da fase (atraso R$ vs alvo, compre o 1º): ${Object.entries(fase?.pesos ?? {}).map(([tk2, w]: any) => [tk2, (w / 100) * (t.investido + t.caixa) - ((s.posicoes || []).find((p: any) => p.ticker === tk2)?.valor ?? 0)] as [string, number]).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([tk2, v]) => `${tk2} ${Math.round(v)}`).join(', ')}.`,
     `Magic: ativos ${(s.magic?.ativos || []).join(',') || '-'}; próximo ${s.magic?.proximo ?? '-'}; custo total ${s.magic?.custo_total ?? '-'}.`,
     (s.alertas || []).length ? `Alertas: ${(s.alertas || []).slice(0, 4).map((a: any) => a.texto).join(' | ')}` : '',
-    (extras.regras || []).length ? `Regras: ${(extras.regras || []).map(r => String(r).slice(0, 140)).join(' | ')}` : '',
-    e ? `Estratégia: ${String(e.objetivo ?? '').slice(0, 160)}. Decisões: ${(e.decisoes || []).slice(-3).map((d: any) => `${d.data}: ${String(d.texto).slice(0, 120)}`).join(' | ')}. Roteiro: ${idx < 0 ? 'concluído' : `mês ${idx + 1} (meta ${rot![idx].meta_patrimonio}, renda ${rot![idx].meta_renda})`}.` : '',
+    (extras.regras || []).length ? `Regras: ${(extras.regras || []).slice(0, 8).map(r => String(r).split(/\. |: | — /)[0].slice(0, 90)).join(' | ')}` : '',
+    e ? `Estratégia: ${String(e.objetivo ?? '').slice(0, 160)}. Decisões: ${(e.decisoes || []).slice(-2).map((d: any) => `${d.data}: ${String(d.texto).split(/\. |: /)[0].slice(0, 100)}`).join(' | ')}. Roteiro: ${idx < 0 ? 'concluído' : `mês ${idx + 1} (meta ${rot![idx].meta_patrimonio}, renda ${rot![idx].meta_renda})`}.` : '',
     ult.length ? `Últimos lançamentos: ${ult.map((m: any) => `${m.data} ${m.tipo}${m.anulado ? '(anulado)' : ''} ${m.ticker ?? ''} ${m.qtd ?? ''} ${m.preco ?? m.valor ?? ''}`.replace(/\s+/g, ' ').trim()).join('; ')}` : '',
   ].filter(Boolean).join('\n');
 }
@@ -415,7 +416,8 @@ export async function conversar(opts: {
   const economico = opts.cfg.economico !== false;
   const run = (n: NomeFerramenta, a: any) => executar(n, a, opts.tk, { fetch: f, geminiKey: opts.chaves.gemini, modeloGemini: opts.cfg.modeloGemini, economico, memo: opts.tk.memo, ev, propostas, fontes, textoUsuario: opts.texto, uso });
   // Histórico curto: cada volta reenvia tudo, então conversa longa é o que mais gasta
-  const hist = opts.historico.slice(economico ? -6 : -12).map(t => ({ ...t, texto: t.texto.length > 600 ? t.texto.slice(0, 600) + '…' : t.texto }));
+  const lim = economico ? 300 : 600;
+  const hist = opts.historico.slice(economico ? -2 : -10).map(t => ({ ...t, texto: t.texto.length > lim ? t.texto.slice(0, lim) + '…' : t.texto }));
 
   const ordem: ('claude' | 'gemini')[] = opts.cfg.provedor === 'gemini' ? ['gemini', 'claude'] : ['claude', 'gemini'];
   const erros: string[] = [];

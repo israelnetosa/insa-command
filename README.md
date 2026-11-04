@@ -20,7 +20,7 @@ Centro de comando **privado** da carteira INSA Dividend Army. É a sucessora do 
 
 - **Respostas locais, 0 tokens:** o próprio motor do app responde as perguntas da carteira sem chamar a IA. Entram aqui a leitura do dia, onde aplicar um aporte, a zona de ataque, o Magic Number, os marcos e a projeção, a renda, a fila de oportunidades e um ativo específico.
 - **Lançamentos em texto sem IA:** frases como "comprei 3 BTLG11 a 97,80", "recebi R$ 12,35 do MXRF11" e "aportei 500" viram proposta para confirmar.
-- **IA só quando precisa:** comece com `ia:` para forçar a IA, por exemplo numa análise aberta ou numa pesquisa na web.
+- **IA só com `ia:` (1.7.1):** no modo econômico, a IA externa só é chamada quando a mensagem começa com `ia:`. Sem o prefixo, o motor responde. Pedidos de "próximos passos" ou "chegar a R$ X/mês" saem como plano, e perguntas que não reconhece viram panorama com a dica do `ia:`. Com o prefixo, a IA recebe só as 2 últimas falas e um dossiê de ~600 tokens.
 - **Contexto enxuto:** o dossiê, o histórico e as ferramentas foram compactados, e a resposta tem teto de tamanho. Uma consulta à IA caiu de cerca de 5,2k para 1,5k tokens.
 - **Gemini sem travar no limite:**
   - O Flash-Lite, mais barato e com cota maior, vem primeiro.

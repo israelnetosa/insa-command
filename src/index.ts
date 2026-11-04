@@ -321,7 +321,7 @@ async function api(req: Request, env: Env, url: URL): Promise<Response> {
 
     // 1. Motor local: perguntas do dia a dia sem gastar tokens
     if (economico) {
-      const local = await responderLocal(texto, tk).catch(() => null);
+      const local = await responderLocal(texto, tk, new Date(), true).catch(() => null);
       if (local) return registrar(local, { local: true });
     }
     // 2. Mesma pergunta com a mesma carteira na última hora: reaproveita a resposta

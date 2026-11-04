@@ -27,12 +27,16 @@ export function lerValor(s: string): number | null {
 }
 
 // Perguntas que pedem opinião, pesquisa ou fatos externos: vão para a IA.
-const PEDE_IA = /\b(noticia|fato relevante|resultado trimestral|balanco|data.?com|anunci|pesquis|por ?que|opiniao|vale a pena|compar|setor|macro|selic|juro|inflacao|ipca|guidance|internet|fonte|explique|explica|risco de|cenario|deveria|recomenda|melhor fii|melhor acao|analise (completa|profunda|fundamentalista))/;
+const PEDE_IA = /\b(noticia|mercado|o que (voce )?acha|fato relevante|resultado trimestral|balanco|data.?com|anunci|pesquis|por ?que|opiniao|vale a pena|compar|setor|macro|selic|juro|inflacao|ipca|guidance|internet|fonte|explique|explica|risco de|cenario|deveria|recomenda|melhor fii|melhor acao|analise (completa|profunda|fundamentalista))/;
 const TICKER = /\b([a-z]{4}\d{1,2})\b/g;
 
 function hojeBRT(agora: Date) { return new Date(agora.getTime() - 3 * 3600_000).toISOString().slice(0, 10); }
 
-export async function responderLocal(texto: string, tk: Toolkit, agora = new Date()): Promise<Resultado | null> {
+/**
+ * @param estrito modo econômico: sem o prefixo "ia:", NUNCA chama a IA. O que o motor não sabe responder
+ *                vira um panorama com próximos passos e a dica de como acionar a IA.
+ */
+export async function responderLocal(texto: string, tk: Toolkit, agora = new Date(), estrito = false): Promise<Resultado | null> {
   const t = normalizar(texto);
   if (!t || t.startsWith('ia:') || t.startsWith('/ia')) return null;   // o Senhor pediu a IA explicitamente
   const ok = (resposta: string, ferramenta: string, propostas: number[] = []): Resultado => ({
@@ -43,12 +47,53 @@ export async function responderLocal(texto: string, tk: Toolkit, agora = new Dat
   // 1. Lançamentos declarados ("comprei 10 BTLG11 a 98,50") → proposta para confirmar
   const lanc = await lancamento(t, tk, agora, texto);
   if (lanc) return ok(lanc.texto, 'propor_lancamento', [lanc.id]);
-  if (/\b(comprei|vendi|recebi|aportei|depositei|transferi)\b/.test(t)) return null;   // não entendi os números: a IA interpreta
+  if (/\b(comprei|vendi|recebi|aportei|depositei|transferi)\b/.test(t)) {
+    if (!estrito) return null;   // não entendi os números: a IA interpreta
+    return ok(['Senhor, não consegui ler os números desse lançamento. Formatos que entendo sem IA:',
+      '- comprei 3 BTLG11 a 97,80 (opcional: com custos de 0,50)', '- vendi 2 ITUB4 a 40', '- recebi R$ 12,35 do MXRF11 ontem', '- aportei 500',
+      'Ou use o Registrar, ou envie "ia: <sua frase>" para a IA interpretar (gasta tokens).'].join('\n'), 'ajuda_lancamento');
+  }
 
-  if (PEDE_IA.test(t)) return null;
+  if (PEDE_IA.test(t)) {
+    if (!estrito) return null;
+    return ok(['Senhor, essa pergunta pede pesquisa ou opinião, e isso só a IA faz (gasta tokens).',
+      `Para acionar, envie: ia: ${texto.trim().slice(0, 120)}`,
+      'Sem IA eu respondo: leitura do dia, próximos passos, onde aplicar R$ X, zona de ataque, Magic Number, marcos, renda e um ativo (ex.: "e o BTLG11?").'].join('\n'), 'requer_ia');
+  }
   const s = await tk.state();
   const posicoes: any[] = s.posicoes || [];
   const fase = (s.fases || []).find((f: any) => f.id === s.missao?.fase?.id);
+  const filaFase = () => {
+    const total = s.totais.investido + s.totais.caixa;
+    return Object.entries(fase?.pesos ?? {}).map(([tk2, w]: any) => {
+      const p = posicoes.find(x => x.ticker === tk2);
+      return { ticker: tk2, alvo: w, peso: p?.peso ?? 0, atraso: (w / 100) * total - (p?.valor ?? 0), zona: p?.zona ?? 'fora da carteira', var: p?.var_dia ?? null };
+    }).sort((a, b) => b.atraso - a.atraso);
+  };
+
+  // Próximos passos rumo a um alvo de renda ("o que fazer para chegar a 25/mês?", "analisar a carteira")
+  const passos = async (cabecalho?: string) => {
+    const mi = s.missao;
+    const alvoTxt = t.match(/(\d[\d.,]*)\s*(?:reais\s*)?(?:\/|por|ao|de renda (?:por|ao))\s*mes/);
+    const alvo = (alvoTxt ? lerValor(alvoTxt[1]) : null) ?? mi.proximo_marco;
+    const ref = s.totais.renda_referencia ?? s.totais.renda_mes_estimada;
+    const falta = Math.max(0, alvo - ref);
+    const aporte = Number(s.aporte_mensal) || 0;
+    const sim = await tk.simular(aporte);
+    const add = Number(sim.renda_mensal_adicional_estimada) || 0;
+    const compras = (sim.compras || []).map((c: any) => `${c.qtd} ${c.ticker}`).join(' + ');
+    const fila = filaFase().slice(0, 3);
+    return [
+      cabecalho ?? '',
+      `Senhor, renda hoje ${brl(ref)}/mês; alvo ${brl(alvo)}/mês${falta ? `: faltam ${brl(falta)}/mês.` : ': alvo já alcançado.'}`,
+      `Próximo aporte (${brl(aporte)} + caixa ${brl(s.totais.caixa)}): ${compras || 'nenhuma cota inteira cabe'}${add ? ` → +${brl(add)}/mês` : ''}.`,
+      falta && add ? (add >= falta ? 'Esse aporte sozinho fecha o alvo.' : `No ritmo atual, ~${Math.ceil(falta / add)} aporte(s) até o alvo (os proventos reinvestidos aceleram).`) : '',
+      fila.length ? `Fila da ${fase?.nome ?? 'fase'}: ${fila.map((f, i) => `${i + 1}. ${f.ticker} (peso ${num(f.peso)}%/alvo ${num(f.alvo)}%, faltam ${brl(Math.max(0, f.atraso))}, ${f.zona})`).join(' · ')}.` : '',
+      `${mi.em_ataque} pelotão(ões) em zona de ataque · Magic Number: próximo ${s.magic?.proximo ?? '—'}.`,
+    ].filter(Boolean).join('\n');
+  };
+  if (/(proximos? passos?|analis|alcanc|chegar (a|em|nos?|aos?)|bater (a|o|os)|o que (fazer|faco|fazemos)|plano de acao|como (chego|chegar|acelero|acelerar))/.test(t))
+    return ok(await passos(), 'proximos_passos');
 
   // 2. Onde aplicar um aporte
   const valor = /r\$|\d/.test(t) ? lerValor(t.replace(/\b[a-z]{4}\d{1,2}\b/g, '')) : null;
@@ -68,11 +113,7 @@ export async function responderLocal(texto: string, tk: Toolkit, agora = new Dat
 
   // 3. Oportunidades / mais atrasados
   if (/(oportunidad|varr|atrasad|prioridad|o que esta para tras|fila de compra)/.test(t)) {
-    const total = s.totais.investido + s.totais.caixa;
-    const fila = Object.entries(fase?.pesos ?? {}).map(([tk2, w]: any) => {
-      const p = posicoes.find(x => x.ticker === tk2);
-      return { ticker: tk2, alvo: w, peso: p?.peso ?? 0, atraso: (w / 100) * total - (p?.valor ?? 0), zona: p?.zona ?? 'fora da carteira', var: p?.var_dia ?? null };
-    }).sort((a, b) => b.atraso - a.atraso).slice(0, 6);
+    const fila = filaFase().slice(0, 6);
     if (!fila.length) return ok('Senhor, a fase atual não tem pesos-alvo cadastrados. Veja a aba Estratégia.', 'varrer_oportunidades');
     return ok([`Senhor, fila da fase ${fase?.nome ?? '—'} (mais atrasado primeiro):`,
       ...fila.map((f, i) => `${i + 1}. ${f.ticker}: peso ${num(f.peso)}% / alvo ${num(f.alvo)}% · faltam ${brl(Math.max(0, f.atraso))} · zona ${f.zona}${f.var != null ? ` · dia ${pct(f.var)}` : ''}`),
@@ -137,7 +178,7 @@ export async function responderLocal(texto: string, tk: Toolkit, agora = new Dat
     const p = posicoes.find(x => x.ticker === tic);
     const q = await tk.cotacao(tic).catch(() => null);
     const alvo = fase?.pesos?.[tic] ?? 0;
-    if (!p && !q) return null;
+    if (!p && !q) return estrito ? ok(`Senhor, não encontrei ${tic} na carteira nem cotação. Para pesquisar, envie: ia: ${texto.trim().slice(0, 100)}`, 'focar_ativo') : null;
     if (!p) return ok(`Senhor, ${tic} não está na carteira. Cotação: ${brl(q.preco)} (${pct(q.variacao)} no dia, ${q.fonte}). Alvo na fase: ${num(alvo)}%.`, 'focar_ativo');
     return ok([
       `Senhor, ${tic}: ${num(p.qtd)} cotas · PM ${brl(p.preco_medio)}${p.pm_estimado ? ' (estimado)' : ''} · preço ${brl(q?.preco ?? p.preco)} (${pct(q?.variacao ?? p.var_dia)} no dia).`,
@@ -160,7 +201,9 @@ export async function responderLocal(texto: string, tk: Toolkit, agora = new Dat
       (s.alertas || []).length ? `- Alertas: ${(s.alertas || []).slice(0, 3).map((a: any) => a.texto).join(' ')}` : '',
     ].filter(Boolean).join('\n'), 'leitura');
   }
-  return null;
+  if (!estrito) return null;
+  // Modo econômico: sem "ia:" a IA nunca é chamada. Devolve o panorama com os próximos passos.
+  return ok((await passos()) + '\nPara uma análise aberta da IA (gasta tokens), comece a mensagem com "ia:".', 'proximos_passos');
 }
 
 /** Reconhece lançamentos simples escritos em português e prepara a proposta (nunca grava). */

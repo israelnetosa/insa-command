@@ -851,7 +851,7 @@ async function manuel() {
       <form id="cf" class="composer"><label class="sr" for="ct">Mensagem</label>
         <textarea id="ct" name="t" rows="2" maxlength="4000" placeholder="Ex.: comprei 3 BTLG11 a 97,80 · onde aplico R$ 500? · ia: pergunta aberta"></textarea>
         <button class="btn">Enviar</button></form>
-      <p class="faint">Perguntas da carteira são respondidas pelo motor do app, sem gastar tokens. Comece com <b>ia:</b> para forçar a IA (análise aberta ou pesquisa na web).</p>
+      <p class="faint">No modo econômico, a IA externa só é acionada quando a mensagem começa com <b>ia:</b>. Todo o resto é respondido pelo motor do app, com 0 tokens.</p>
       <p class="faint">M.A.N.U.E.L. analisa e organiza; não envia ordens nem é recomendação de investimento. Lançamentos só entram no razão com o seu clique.</p>
     </div>`);
   const th = document.getElementById('thread');

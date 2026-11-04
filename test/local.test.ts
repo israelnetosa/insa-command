@@ -95,3 +95,19 @@ test('dossiê compacto: bem menor que antes', async () => {
   assert.match(d, /AAAA11 10 100 100 0\.4% 25\/60 ataque/);
   assert.ok(d.length < 1200, `dossiê com ${d.length} caracteres`);
 });
+
+test('modo econômico (estrito): sem "ia:" nunca devolve null, então a IA não é chamada', async () => {
+  const { t } = tk();
+  for (const q of ['vamos analisar a carteira e proximos passos', 'qual o próximo passo para alcançar os 25/mês?', 'o que acha do mercado?',
+    'Pesquise as notícias do AAAA11', 'comprei umas cotas semana passada', 'xyz', 'e o ZZZZ11?']) {
+    const r = await responderLocal(q, t, agora, true);
+    assert.ok(r, q);
+    assert.deepEqual(r!.uso, { entrada: 0, saida: 0 }, q);
+  }
+  const r = await responderLocal('qual o próximo passo para alcançar os 40/mês?', t, agora, true);
+  assert.match(r!.texto, /alvo R\$ 40,00\/mês: faltam R\$ 27,00/);
+  assert.match(r!.texto, /8 AAAA11 → \+R\$ 6,40\/mês/);
+  assert.match((await responderLocal('Pesquise as notícias do AAAA11', t, agora, true))!.texto, /ia: Pesquise/);
+  // com o prefixo, vai para a IA
+  assert.equal(await responderLocal('ia: analise a carteira', t, agora, true), null);
+});
