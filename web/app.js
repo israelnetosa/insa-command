@@ -120,7 +120,7 @@ function frame(view, inner) {
   $app.innerHTML = `
   <div class="hudtop" id="hudtop"><header class="top"><a class="brand" href="#/cockpit" aria-label="INSA Command, início">${EMBLEM}<span><b>INSA</b><small>Command</small></span></a>
     <span class="sys"><i class="dot on"></i>Sistemas online</span>
-    <span class="feed" title="${esc(feed.title)}"><i class="dot ${feed.cls}"></i>${esc(feed.label)}</span>
+    <span class="feed" id="pgst" title="${esc(feed.title)}"><i class="dot ${feed.cls}"></i><span>${esc(feed.label)}</span></span>
     <div class="clock"><b id="clk">--:--:--</b><small id="clkd"></small></div></header>${fita()}</div>
   <div class="shell">
     <nav class="side" aria-label="Seções">${NAV.map(([id, n, t, i]) => `<a href="#/${id}" class="${view === id ? 'on' : ''}" ${view === id ? 'aria-current="page"' : ''}><span>${n}</span><i aria-hidden="true">${i}</i><b>${t}</b></a>`).join('')}</nav>
@@ -150,19 +150,33 @@ function fita() {
   const html = itens.map(i => `<span><b>${esc(i.t)}</b>${esc(i.v)} <em class="${sign(i.d)}" style="font-style:normal">${i.d == null ? '' : (i.d > 0 ? '▲ +' : i.d < 0 ? '▼ ' : '') + pct(i.d, 2)}</em></span>`).join('');
   return `<div class="tape" aria-label="Cotações"><div class="tape-trilho">${html}${html.replace(/<span>/g, '<span aria-hidden="true">')}</div></div>`;
 }
-function feedStatus() {
-  const ps = S?.posicoes || [];
-  const comCot = ps.filter(p => p.cotacao_ok);
-  if (!comCot.length) return { cls: '', label: 'sem cotações', title: 'Nenhuma cotação ainda' };
-  const atraso = Math.min(...comCot.map(p => p.atraso_s ?? 1e9));
-  if (S.em_pregao && atraso < 25 * 60) return { cls: 'on', label: `pregão · ${Math.round(atraso / 60)} min`, title: 'Atraso medido da cotação mais recente' };
-  return { cls: 'late', label: S.em_pregao ? 'cotação atrasada' : 'pregão fechado', title: 'Última cotação: ' + Math.round(atraso / 60) + ' min' };
+// Pregão da B3 (10h–17h de Brasília, dias úteis; feriados não considerados): estado e próximo evento
+function pregaoAgora(d = new Date()) {
+  const brt = new Date(d.getTime() - 3 * 3600_000), dia = brt.getUTCDay(), min = brt.getUTCHours() * 60 + brt.getUTCMinutes();
+  const util = dia >= 1 && dia <= 5, aberto = util && min >= 600 && min < 1020;
+  const alvo = new Date(brt);
+  if (aberto) alvo.setUTCHours(17, 0, 0, 0);
+  else if (util && min < 600) alvo.setUTCHours(10, 0, 0, 0);
+  else { do { alvo.setUTCDate(alvo.getUTCDate() + 1); } while ([0, 6].includes(alvo.getUTCDay())); alvo.setUTCHours(10, 0, 0, 0); }
+  return { aberto, evento: aberto ? 'fechamento' : 'abertura', falta: alvo.getTime() + 3 * 3600_000 - d.getTime() };
 }
+function feedStatus() {
+  const pg = pregaoAgora();
+  const ps = S?.posicoes || [], comCot = ps.filter(p => p.cotacao_ok);
+  const atraso = comCot.length ? Math.min(...comCot.map(p => p.atraso_s ?? 1e9)) : null;
+  const title = atraso == null ? 'Nenhuma cotação ainda' : `Cotação mais recente há ${Math.round(atraso / 60)} min (B3 gratuita: até ~15 min de atraso)`;
+  if (!pg.aberto) return { cls: 'late', label: 'pregão fechado', title };
+  return { cls: atraso != null && atraso < 25 * 60 ? 'on' : 'late', label: 'pregão aberto', title: (atraso != null && atraso >= 25 * 60 ? 'Cotações atrasadas. ' : '') + title };
+}
+const relogio = (ms) => { const t = Math.max(0, Math.floor(ms / 1000)); return [Math.floor(t / 3600), Math.floor(t / 60) % 60, t % 60].map(n => String(n).padStart(2, '0')).join(':'); };
 function tick() {
   const el = document.getElementById('clk'); if (!el) return;
-  const d = new Date();
-  el.textContent = d.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' });
-  document.getElementById('clkd').textContent = 'B3 · ' + d.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', weekday: 'short', day: '2-digit', month: 'short' }) + ' · Lisboa ' + d.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' });
+  const d = new Date(), pg = pregaoAgora(d);
+  el.textContent = relogio(pg.falta);
+  el.title = `Tempo até a ${pg.evento} do pregão`;
+  document.getElementById('clkd').textContent = `até a ${pg.evento} · B3 ${d.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' })} · Lisboa ${d.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })}`;
+  const st = document.getElementById('pgst');
+  if (st && st.dataset.aberto !== String(pg.aberto)) { const f = feedStatus(); st.dataset.aberto = String(pg.aberto); st.lastElementChild.textContent = f.label; st.firstElementChild.className = 'dot ' + f.cls; }
 }
 setInterval(tick, 1000);
 
