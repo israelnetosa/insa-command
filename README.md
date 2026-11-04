@@ -16,6 +16,19 @@ Centro de comando **privado** da carteira INSA Dividend Army. É a sucessora do 
 | Peso do app | 412 KB de JS | 35 KB (12 KB comprimido) |
 | Hospedagem | Presa ao Manus | Sua conta Cloudflare (plano gratuito) |
 
+## Novidades da 1.7 · M.A.N.U.E.L. econômico
+
+- **Respostas locais, 0 tokens:** o próprio motor do app responde as perguntas da carteira sem chamar a IA. Entram aqui a leitura do dia, onde aplicar um aporte, a zona de ataque, o Magic Number, os marcos e a projeção, a renda, a fila de oportunidades e um ativo específico.
+- **Lançamentos em texto sem IA:** frases como "comprei 3 BTLG11 a 97,80", "recebi R$ 12,35 do MXRF11" e "aportei 500" viram proposta para confirmar.
+- **IA só quando precisa:** comece com `ia:` para forçar a IA, por exemplo numa análise aberta ou numa pesquisa na web.
+- **Contexto enxuto:** o dossiê, o histórico e as ferramentas foram compactados, e a resposta tem teto de tamanho. Uma consulta à IA caiu de cerca de 5,2k para 1,5k tokens.
+- **Gemini sem travar no limite:**
+  - O Flash-Lite, mais barato e com cota maior, vem primeiro.
+  - Ao bater no limite (429), o app passa na hora para outro modelo, que tem cota própria.
+  - O modelo esgotado fica de fora até a cota voltar.
+- **Cache:** a mesma pesquisa em 12 h e a mesma pergunta com a mesma carteira em 1 h não gastam de novo. O Claude usa cache de prompt.
+- **Controle:** modo econômico (ligado por padrão), consultas por dia e teto de tokens por dia, em Ajustes → Configuração do M.A.N.U.E.L.
+
 ## Novidades da 1.5 · Nuvem e Android
 
 - **Nuvem própria** (Cloudflare Worker + D1, plano gratuito): o PC e o celular usam os mesmos dados.

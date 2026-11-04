@@ -15,6 +15,7 @@ import migration0001 from '../migrations/0001_init.sql';
 import migration0002 from '../migrations/0002_live.sql';
 import migration0003 from '../migrations/0003_manuel.sql';
 import migration0004 from '../migrations/0004_dispositivos.sql';
+import migration0005 from '../migrations/0005_ia_cache.sql';
 
 const SCHEME = 'insa';
 const ORIGIN = `${SCHEME}://app`;
@@ -304,7 +305,7 @@ app.whenReady().then(async () => {
   Menu.setApplicationMenu(null);
   await mkdir(dataDir(), { recursive: true });
   db = new LocalD1(join(dataDir(), 'insa.sqlite'));
-  db.migrate([migration0001, migration0002, migration0003, migration0004]);
+  db.migrate([migration0001, migration0002, migration0003, migration0004, migration0005]);
   loadSecrets();
   const lock = buildEnv();
   wireIpc(lock);

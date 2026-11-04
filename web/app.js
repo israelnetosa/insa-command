@@ -477,9 +477,11 @@ function ajustes() {
         <details style="margin-top:12px" id="iacfg"><summary class="faint">Configuração do M.A.N.U.E.L.</summary>
           <form id="cfgf" class="row" style="margin-top:10px">
             <label>Cérebro principal<select name="provedor"><option value="claude">Claude (reserva: Gemini)</option><option value="gemini">Gemini (reserva: Claude)</option></select></label>
-            <label>Modelo Claude<input name="modeloClaude" placeholder="claude-sonnet-5-5"></label>
+            <label>Modelo Claude<input name="modeloClaude" placeholder="claude-haiku-5-5 (barato) ou claude-sonnet-5-5"></label>
             <label>Modelo Gemini<input name="modeloGemini" placeholder="auto"></label>
-            <label>Limite diário de mensagens<input name="limite_diario" type="number" min="1" max="1000"></label>
+            <label>Consultas à IA por dia<input name="limite_diario" type="number" min="1" max="1000"></label>
+            <label>Teto de tokens por dia<input name="limite_tokens" type="number" min="5000" max="5000000" step="5000"></label>
+            <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="economico" style="width:auto;min-height:0"> Modo econômico (respostas locais, cache e modelos mais baratos)</label>
             <label>Voz<select name="voz_motor"><option value="windows">Windows (grátis, offline)</option><option value="gemini">Gemini natural (usa a chave)</option><option value="desligada">Desligada</option></select></label>
             <label>Voz Gemini<select name="voz_nome">${VOZES_GEMINI.map(v => `<option>${v}</option>`).join('')}</select></label>
             <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="fala_auto" style="width:auto;min-height:0"> Falar as respostas automaticamente</label>
@@ -558,7 +560,7 @@ function ajustes() {
   busy('cfgsave', async () => {
     const cf = document.getElementById('cfgf');
     const body = { provedor: cf.provedor.value, modeloClaude: cf.modeloClaude.value.trim(), modeloGemini: cf.modeloGemini.value.trim() || 'auto',
-      limite_diario: Number(cf.limite_diario.value), voz_motor: cf.voz_motor.value, voz_nome: cf.voz_nome.value, fala_auto: cf.fala_auto.checked };
+      limite_diario: Number(cf.limite_diario.value), limite_tokens: Number(cf.limite_tokens.value), economico: cf.economico.checked, voz_motor: cf.voz_motor.value, voz_nome: cf.voz_nome.value, fala_auto: cf.fala_auto.checked };
     await api('/api/manuel/config', { method: 'POST', body }); toast('Configuração do M.A.N.U.E.L. salva.');
   });
   api('/api/audit').then(rows => { document.getElementById('aud').innerHTML = rows.slice(0, 30).map(r => `${esc(r.em)} · ${esc(r.acao)}`).join('<br>') || 'vazia'; }).catch(() => {});
@@ -776,13 +778,14 @@ function bolha(m) {
   if (m.papel === 'usuario') return `<div class="msg eu"><div class="balao">${md(m.texto)}</div></div>`;
   const meta = m.meta || {};
   const props = (meta.propostas || []).map(id => (CONV?.propostas || []).find(p => p.id === id)).filter(Boolean);
-  const tok = meta.uso ? ((meta.uso.entrada + meta.uso.saida) / 1000).toFixed(1) + 'k tokens' : '';
+  const n = meta.uso ? meta.uso.entrada + meta.uso.saida : null;
+  const tok = meta.local ? '0 tokens' : meta.cache ? 'resposta reaproveitada · 0 tokens' : n == null ? '' : n < 1000 ? n + ' tokens' : (n / 1000).toFixed(1) + 'k tokens';
   return `<div class="msg ele"><div class="avatar" aria-hidden="true">${EMBLEM}</div><div class="balao">
     ${(meta.ferramentas || []).length ? `<div class="ferr">${meta.ferramentas.map(e => `<span class="tag ${e.ok ? '' : 'espera'}">${esc(e.ferramenta.replace(/_/g, ' '))}${e.resumo ? ' · ' + esc(e.resumo) : ''}</span>`).join('')}</div>` : ''}
     ${md(m.texto)}
     ${props.map(cartaoProposta).join('')}
     ${(meta.fontes || []).length ? `<div class="fontes"><span class="faint">Fontes:</span> ${meta.fontes.map(f => `<a href="${esc(f.url)}" target="_blank" rel="noopener noreferrer">${esc(f.titulo)}</a>`).join(' · ')}</div>` : ''}
-    <div class="rodape faint">${esc(meta.provedor || '')}${meta.modelo ? ' · ' + esc(meta.modelo) : ''}${tok ? ' · ' + tok : ''}
+    <div class="rodape faint">${meta.local ? '<span class="tag ataque">motor local</span> ' : ''}${esc(meta.local ? '' : meta.provedor || '')}${meta.local ? '' : meta.modelo ? ' · ' + esc(meta.modelo) : ''}${tok ? ' · ' + tok : ''}
       <button class="linkbtn" data-falar="${m.id ?? ''}" title="Ouvir">🔊 ouvir</button></div>
   </div></div>`;
 }
@@ -834,20 +837,21 @@ async function manuel() {
     <div class="presenca"><div>${HOLO}</div><div><h1 style="margin-bottom:4px">Às ordens, Senhor.</h1>
       <div class="estado-ia" id="estado">Em prontidão</div>
       <p class="faint" style="margin:6px 0 0">Oficial de inteligência da carteira. Analisa, simula e pesquisa; lançamentos só com a sua confirmação.</p></div></div>
-    ${semChave ? `<div class="banner">Nenhuma chave de IA configurada. <a href="#/ajustes">Cadastre a do Claude e/ou a do Gemini em Ajustes → Inteligência.</a></div>` : ''}
+    ${semChave ? `<div class="banner">Nenhuma chave de IA configurada: só as respostas locais funcionam. <a href="#/ajustes">Cadastre a do Claude e/ou a do Gemini em Ajustes → Inteligência.</a></div>` : ''}
     <div class="livebar">
       <span class="chip ${semChave ? '' : 'open'}"><i class="dot ${semChave ? '' : 'on'}"></i>${semChave ? 'sem IA' : ativo + (c.chaves.claude && c.chaves.gemini ? ' + reserva' : '')}</span>
       <span class="faint">pesquisa: ${c.chaves.gemini ? 'Gemini + Google Search' : 'indisponível (sem chave Gemini)'}</span>
-      <span class="faint">hoje: ${c.uso.chamadas}/${c.config.limite_diario} mensagens · ${((c.uso.entrada + c.uso.saida) / 1000).toFixed(1)}k tokens</span>
+      <span class="faint">hoje: ${c.uso.locais || 0} locais (0 tokens) · IA ${c.uso.chamadas}/${c.config.limite_diario} · ${((c.uso.entrada + c.uso.saida) / 1000).toFixed(1)}k/${Math.round((c.config.limite_tokens || 150000) / 1000)}k tokens</span>
       <span class="faint" style="margin-left:auto">voz: ${esc({ windows: 'Windows', gemini: 'Gemini natural', desligada: 'desligada' }[c.config.voz_motor])}</span>
       <button class="btn ghost sm" id="parar">Parar voz</button><button class="btn ghost sm" id="limpar">Limpar conversa</button>
     </div>
     <div class="console">
       <div id="thread" class="thread" aria-live="polite">${c.mensagens.length ? c.mensagens.map(bolha).join('') : `<div class="empty"><p>Pergunte sobre a carteira, peça uma simulação ou informe uma operação. Tudo o que for gravado passa pela sua confirmação.</p></div>`}</div>
-      <div class="atalhos">${['Leitura do dia da carteira', 'Onde aplico o aporte de R$ 500 deste mês?', 'Quais pelotões estão na zona de ataque e por quê?', 'Pesquise as últimas notícias e proventos anunciados do BTLG11', 'Varra as oportunidades da fase atual'].map(a => `<button class="chipbtn" data-atalho="${esc(a)}">${esc(a)}</button>`).join('')}</div>
+      <div class="atalhos">${['Leitura do dia', 'Onde aplico R$ 500?', 'Zona de ataque', 'Magic Number', 'Quando chego no próximo marco?', 'Renda do mês', 'ia: notícias e proventos anunciados do BTLG11'].map(a => `<button class="chipbtn" data-atalho="${esc(a)}">${esc(a)}</button>`).join('')}</div>
       <form id="cf" class="composer"><label class="sr" for="ct">Mensagem</label>
-        <textarea id="ct" name="t" rows="2" maxlength="4000" placeholder="Ex.: comprei 3 BTLG11 a 97,80 hoje · quanto falta para o próximo marco?" ${semChave ? 'disabled' : ''}></textarea>
-        <button class="btn" ${semChave ? 'disabled' : ''}>Enviar</button></form>
+        <textarea id="ct" name="t" rows="2" maxlength="4000" placeholder="Ex.: comprei 3 BTLG11 a 97,80 · onde aplico R$ 500? · ia: pergunta aberta"></textarea>
+        <button class="btn">Enviar</button></form>
+      <p class="faint">Perguntas da carteira são respondidas pelo motor do app, sem gastar tokens. Comece com <b>ia:</b> para forçar a IA (análise aberta ou pesquisa na web).</p>
       <p class="faint">M.A.N.U.E.L. analisa e organiza; não envia ordens nem é recomendação de investimento. Lançamentos só entram no razão com o seu clique.</p>
     </div>`);
   const th = document.getElementById('thread');

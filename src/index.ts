@@ -4,6 +4,7 @@
 import { handleAuth, currentSession, isConfigured, json, type Env } from './auth';
 import { buildState, replay, planoCompras, faseAtual, LedgerError, type Movement } from './engine';
 import { conversar, voz, explicarErro, CONFIG_PADRAO, type Toolkit, type IAConfig } from './manuel';
+import { responderLocal, normalizar } from './local';
 import { refreshQuotes, liveRefresh, emPregao, pregao, INDICES, fetchQuote } from './market';
 import { seedMovements, seedAssets, seedSettings, validarMigracao } from './seed';
 
@@ -82,7 +83,7 @@ async function audit(env: Env, acao: string, dados?: unknown) {
 async function lerConfigIA(env: Env) {
   const r = await env.DB.prepare(`SELECT valor FROM settings WHERE chave = 'ia_config'`).first<{ valor: string }>();
   const c = r ? JSON.parse(r.valor) : {};
-  return { ...CONFIG_PADRAO, limite_diario: 60, voz_motor: 'windows', voz_nome: 'Charon', fala_auto: false, ...c } as IAConfig & { limite_diario: number; voz_motor: string; voz_nome: string; fala_auto: boolean };
+  return { ...CONFIG_PADRAO, limite_diario: 60, limite_tokens: 150000, voz_motor: 'windows', voz_nome: 'Charon', fala_auto: false, ...c } as IAConfig & { limite_diario: number; limite_tokens: number; voz_motor: string; voz_nome: string; fala_auto: boolean };
 }
 const hojeISO = () => new Date().toISOString().slice(0, 10);
 
@@ -153,6 +154,15 @@ function toolkit(env: Env): Toolkit {
       const r = await env.DB.prepare('INSERT INTO propostas (lancamento, efeito, pedido) VALUES (?, ?, ?) RETURNING id')
         .bind(JSON.stringify(m), JSON.stringify(efeito), pedido).first<{ id: number }>();
       return { id: r!.id, lancamento: m, efeito };
+    },
+    memo: {
+      get: async (k) => (await env.DB.prepare('SELECT valor FROM ia_cache WHERE chave = ? AND expira > ?').bind(k, Date.now()).first<{ valor: string }>())?.valor ?? null,
+      set: async (k, v, min) => {
+        await env.DB.batch([
+          env.DB.prepare('INSERT OR REPLACE INTO ia_cache (chave, valor, expira) VALUES (?, ?, ?)').bind(k, v, Date.now() + min * 60_000),
+          env.DB.prepare('DELETE FROM ia_cache WHERE expira < ?').bind(Date.now()),
+        ]);
+      },
     },
   };
 }
@@ -286,7 +296,7 @@ async function api(req: Request, env: Env, url: URL): Promise<Response> {
     const cfg = await lerConfigIA(env);
     const uso = await env.DB.prepare('SELECT * FROM ia_uso WHERE dia = ?').bind(hojeISO()).first<any>();
     return json({ mensagens: msgs, propostas: await propostasPorIds(env, ids), config: cfg,
-      chaves: { claude: !!env.ANTHROPIC_API_KEY, gemini: !!env.GEMINI_API_KEY }, uso: uso ?? { dia: hojeISO(), chamadas: 0, entrada: 0, saida: 0 } });
+      chaves: { claude: !!env.ANTHROPIC_API_KEY, gemini: !!env.GEMINI_API_KEY }, uso: uso ?? { dia: hojeISO(), chamadas: 0, entrada: 0, saida: 0, locais: 0 } });
   }
 
   if (path === '/api/manuel/mensagem' && req.method === 'POST') {
@@ -294,23 +304,47 @@ async function api(req: Request, env: Env, url: URL): Promise<Response> {
     const texto = String(body.texto ?? '').trim().slice(0, 4000);
     if (!texto) return json({ erro: 'Mensagem vazia.' }, 400);
     const cfg = await lerConfigIA(env);
-    const uso = await env.DB.prepare('SELECT chamadas FROM ia_uso WHERE dia = ?').bind(hojeISO()).first<{ chamadas: number }>();
-    if ((uso?.chamadas ?? 0) >= cfg.limite_diario) return json({ erro: `Limite diário de ${cfg.limite_diario} mensagens atingido. Ajuste em Ajustes → Inteligência.` }, 429);
-    const hist = (await env.DB.prepare('SELECT papel, texto FROM (SELECT * FROM conversa ORDER BY id DESC LIMIT 16) ORDER BY id').all<any>()).results;
-    const st = await state(env);
+    const tk = toolkit(env);
+    const economico = cfg.economico !== false;
+    const registrar = async (r: { texto: string; provedor: string; modelo: string; ferramentas: any[]; propostas: number[]; fontes: any[]; uso: { entrada: number; saida: number } }, extra: { local?: boolean; cache?: boolean } = {}) => {
+      const meta = { provedor: r.provedor, modelo: r.modelo, ferramentas: r.ferramentas, propostas: r.propostas, fontes: r.fontes, uso: r.uso, ...extra };
+      await env.DB.batch([
+        env.DB.prepare(`INSERT INTO conversa (papel, texto) VALUES ('usuario', ?)`).bind(texto),
+        env.DB.prepare(`INSERT INTO conversa (papel, texto, meta) VALUES ('manuel', ?, ?)`).bind(r.texto || '(sem texto)', JSON.stringify(meta)),
+        extra.local || extra.cache
+          ? env.DB.prepare(`INSERT INTO ia_uso (dia, locais) VALUES (?, 1) ON CONFLICT(dia) DO UPDATE SET locais = locais + 1`).bind(hojeISO())
+          : env.DB.prepare(`INSERT INTO ia_uso (dia, chamadas, entrada, saida) VALUES (?, 1, ?, ?)
+        ON CONFLICT(dia) DO UPDATE SET chamadas = chamadas + 1, entrada = entrada + excluded.entrada, saida = saida + excluded.saida`).bind(hojeISO(), r.uso.entrada, r.uso.saida),
+      ]);
+      return json({ texto: r.texto, meta, propostas: await propostasPorIds(env, r.propostas) });
+    };
+
+    // 1. Motor local: perguntas do dia a dia sem gastar tokens
+    if (economico) {
+      const local = await responderLocal(texto, tk).catch(() => null);
+      if (local) return registrar(local, { local: true });
+    }
+    // 2. Mesma pergunta com a mesma carteira na última hora: reaproveita a resposta
+    const st = await tk.state();
+    const digital = (st.posicoes || []).map((p: any) => `${p.ticker}:${p.qtd}`).join(',') + '|' + st.totais.caixa + '|' + hojeISO();
+    const chave = 'resp:' + normalizar(texto.replace(/^ia:\s*/i, '')) + '#' + digital;
+    if (economico) {
+      const salvo = await tk.memo!.get(chave).catch(() => null);
+      if (salvo) return registrar({ ...JSON.parse(salvo), propostas: [], uso: { entrada: 0, saida: 0 } }, { cache: true });
+    }
+    // 3. IA, dentro dos limites do dia
+    const uso = await env.DB.prepare('SELECT chamadas, entrada, saida FROM ia_uso WHERE dia = ?').bind(hojeISO()).first<{ chamadas: number; entrada: number; saida: number }>();
+    if ((uso?.chamadas ?? 0) >= cfg.limite_diario) return json({ erro: `Limite diário de ${cfg.limite_diario} consultas à IA atingido. As respostas locais continuam funcionando. Ajuste em Ajustes → Inteligência.` }, 429);
+    if ((uso?.entrada ?? 0) + (uso?.saida ?? 0) >= cfg.limite_tokens) return json({ erro: `Teto diário de ${(cfg.limite_tokens / 1000).toFixed(0)}k tokens atingido. As respostas locais continuam funcionando. Ajuste em Ajustes → Inteligência.` }, 429);
+    const hist = (await env.DB.prepare('SELECT papel, texto FROM (SELECT * FROM conversa ORDER BY id DESC LIMIT 12) ORDER BY id').all<any>()).results;
     let r;
     try {
-      r = await conversar({ texto, historico: hist, tk: toolkit(env), cfg, chaves: { anthropic: env.ANTHROPIC_API_KEY, gemini: env.GEMINI_API_KEY },
+      r = await conversar({ texto: texto.replace(/^ia:\s*/i, ''), historico: hist, tk, cfg, chaves: { anthropic: env.ANTHROPIC_API_KEY, gemini: env.GEMINI_API_KEY },
         estrategia: st.estrategia, regras: st.regras });
     } catch (e) { return json({ erro: (e as Error).message }, 502); }
-    const meta = { provedor: r.provedor, modelo: r.modelo, ferramentas: r.ferramentas, propostas: r.propostas, fontes: r.fontes, uso: r.uso };
-    await env.DB.batch([
-      env.DB.prepare(`INSERT INTO conversa (papel, texto) VALUES ('usuario', ?)`).bind(texto),
-      env.DB.prepare(`INSERT INTO conversa (papel, texto, meta) VALUES ('manuel', ?, ?)`).bind(r.texto || '(sem texto)', JSON.stringify(meta)),
-      env.DB.prepare(`INSERT INTO ia_uso (dia, chamadas, entrada, saida) VALUES (?, 1, ?, ?)
-        ON CONFLICT(dia) DO UPDATE SET chamadas = chamadas + 1, entrada = entrada + excluded.entrada, saida = saida + excluded.saida`).bind(hojeISO(), r.uso.entrada, r.uso.saida),
-    ]);
-    return json({ texto: r.texto, meta, propostas: await propostasPorIds(env, r.propostas) });
+    if (economico && !r.propostas.length && r.texto)
+      await tk.memo!.set(chave, JSON.stringify({ texto: r.texto, provedor: r.provedor, modelo: r.modelo, ferramentas: r.ferramentas, fontes: r.fontes }), 60).catch(() => null);
+    return registrar(r);
   }
 
   if (path === '/api/manuel/limpar' && req.method === 'POST') {
@@ -356,6 +390,8 @@ async function api(req: Request, env: Env, url: URL): Promise<Response> {
       modeloClaude: /^claude-[a-z0-9.-]{3,60}$/.test(b.modeloClaude ?? '') ? b.modeloClaude : atual.modeloClaude,
       modeloGemini: b.modeloGemini === 'auto' || /^gemini-[a-z0-9.-]{3,60}$/.test(b.modeloGemini ?? '') ? b.modeloGemini : atual.modeloGemini,
       limite_diario: Number.isInteger(b.limite_diario) && b.limite_diario >= 1 && b.limite_diario <= 1000 ? b.limite_diario : atual.limite_diario,
+      limite_tokens: Number.isInteger(b.limite_tokens) && b.limite_tokens >= 5000 && b.limite_tokens <= 5_000_000 ? b.limite_tokens : atual.limite_tokens,
+      economico: typeof b.economico === 'boolean' ? b.economico : atual.economico !== false,
       voz_motor: ['windows', 'gemini', 'desligada'].includes(b.voz_motor) ? b.voz_motor : atual.voz_motor,
       voz_nome: /^[A-Za-z]{2,20}$/.test(b.voz_nome ?? '') ? b.voz_nome : atual.voz_nome,
       fala_auto: typeof b.fala_auto === 'boolean' ? b.fala_auto : atual.fala_auto,
