@@ -224,7 +224,7 @@ function cockpit() {
     <div class="eyebrow">INSA / Centro de comando</div>
     <h1>A missão em perspectiva, Senhor.</h1>
     <div class="nucleo">
-      <div class="card reator">${ophanim(s)}</div>
+      <div class="card reator"><h2>Anéis do núcleo</h2>${ophanim(s)}</div>
       <div class="leituras">
         <div class="card kpi leitura"><div class="label">Resultado do dia</div><div class="val num ${sign(t.resultado_dia)}">${t.resultado_dia > 0 ? '+' : ''}${brl(t.resultado_dia)}</div>
           <div class="faint"><a href="#/radar">Abrir radar ao vivo</a></div></div>
@@ -235,11 +235,6 @@ function cockpit() {
         <div class="card kpi leitura"><div class="label">Próximo marco</div><div class="val num">${brl(m.falta_marco)}<small>/mês</small></div>
           <div class="bar"><i style="width:${Math.min(100, m.progresso_marco)}%"></i></div>
           <div class="faint">faltam para ${brl(m.proximo_marco, 0)}/mês · meta ${brl(m.meta_mensal, 0)}</div></div>
-        <div class="card leitura" style="grid-column:1/-1"><h2>Anéis do núcleo</h2><p class="faint" style="margin:0 0 8px">Toque ou passe o mouse nos olhos dos anéis para ver os dados.</p><div class="legenda-aneis">
-          <div><i style="background:#48e5ff;box-shadow:0 0 6px #48e5ff"></i>Externo: rumo ao marco de ${brl(m.proximo_marco, 0)}/mês<b>${pct(m.progresso_marco)}</b></div>
-          ${m.maior_posicao ? `<div><i style="background:${m.maior_posicao.peso > m.maior_posicao.teto ? '#ff4d5e' : '#ffb347'}"></i>Médio: maior pelotão, ${esc(m.maior_posicao.ticker)}, contra o teto de ${m.maior_posicao.teto}%<b>${pct(m.maior_posicao.peso)}</b></div>` : ''}
-          <div><i style="background:#34f5a4;box-shadow:0 0 6px #34f5a4"></i>Interno: pelotões em zona de ataque<b>${m.em_ataque} de ${t.n_ativos}</b></div>
-        </div></div>
       </div>
     </div>
     <section class="grid g2">

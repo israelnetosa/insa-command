@@ -18,7 +18,7 @@ Centro de comando **privado** da carteira INSA Dividend Army. É a sucessora do 
 
 ## Novidades da 1.8 · Núcleo Ophanim
 
-- **Cockpit:** o núcleo virou "rodas dentro de rodas", com três anéis segmentados que giram em sentidos opostos.
+- **Cockpit:** o núcleo virou "rodas dentro de rodas": três anéis neon que giram em sentidos opostos, com esferas-olho e chamadas em cotovelo até os cantos (valores com ícone de olho, como num HUD).
   - Interno (verde): pelotões em zona de ataque.
   - Médio (âmbar): maior pelotão, com a marca do teto.
   - Externo (ciano): rumo ao marco.
