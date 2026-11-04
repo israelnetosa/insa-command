@@ -8,7 +8,7 @@ android {
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         // versão vem do package.json (passada pelo workflow)
-        versionCode (System.getenv("INSA_VERSION_CODE") ?: "1").toInteger()
+        versionCode Integer.parseInt(System.getenv("INSA_VERSION_CODE") ?: "1")
         versionName System.getenv("INSA_VERSION_NAME") ?: "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
