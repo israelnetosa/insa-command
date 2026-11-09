@@ -16,6 +16,31 @@ Centro de comando **privado** da carteira INSA Dividend Army. É a sucessora do 
 | Peso do app | 412 KB de JS | 35 KB (12 KB comprimido) |
 | Hospedagem | Presa ao Manus | Sua conta Cloudflare (plano gratuito) |
 
+## Novidades da 2.0 · Painel de comando
+
+- **Tela inicial nova ("Comando"):** é um painel denso no estilo de centro de pesquisa. O Cockpit continua no menu.
+- **Toro 3D de fios:** gira e se inclina sem parar.
+  - Cada fio é uma parte do patrimônio de um ativo, na proporção do valor.
+  - A cor mostra a classe: dourado para FIIs, branco para ações, violeta para ETF e ciano para cripto.
+  - A mira percorre os ativos a cada 3,5 s, começando pelas compras do plano.
+  - Um rótulo mostra o candidato, o preço, a zona, a compra planejada e o atraso.
+- **Foco sincronizado:** o ativo em foco acende ao mesmo tempo nas fichas do topo, nas barras de peso, na rosa por classe, no Pareto de renda e nos pelotões.
+- **Coluna de telemetria:**
+  - pregão com onda e mini-gráficos do IBOV e do IFIX;
+  - peso por ativo;
+  - histograma da renda em 12 meses;
+  - ciclo do aporte;
+  - telemetria da carteira;
+  - mapa dos pelotões;
+  - fila dos últimos lançamentos.
+- **Embaixo:** fluxo de renda; patrimônio por classe; metas de peso atual → alvo; renda por ativo em Pareto.
+- **Desempenho:**
+  - até 24 quadros/s (20 no celular), só com o painel visível;
+  - menos fios e resolução menor no celular;
+  - ajuste automático se o aparelho não acompanhar;
+  - botão "pausar", lembrado em cada aparelho;
+  - parado com "reduzir movimento".
+
 ## Novidades da 1.9 · Voz J.A.R.V.I.S.
 
 - **Voz natural masculina:** a voz padrão passa a ser a do Gemini. A instrução de estilo pede português do Brasil, um mordomo digital elegante, humor seco e um ritmo fluido.
