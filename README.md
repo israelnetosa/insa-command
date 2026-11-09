@@ -21,12 +21,16 @@ Centro de comando **privado** da carteira INSA Dividend Army. É a sucessora do 
 - O centro do cockpit trocou os anéis por um **toro 3D de fios**, inspirado num painel de pesquisa. Cada fio é uma parte do patrimônio de um ativo, na proporção do valor, colorido pela classe: dourado para FIIs, branco para ações, violeta para ETF e ciano para cripto.
 - O patrimônio fica no furo do toro, e as chamadas nos cantos continuam: marco, maior pelotão e zona de ataque.
 - Uma mira percorre os ativos (compras do plano primeiro), com um rótulo do candidato embaixo.
+- **Interativo (2.0.2):**
+  - **Arrastar** gira o toro, com inércia; no mouse, arrastar na vertical também inclina.
+  - **Tocar** ou clicar num fio seleciona o ativo: os fios dele acendem em dourado e abre um painel com preço, variação, cotas, PM, valor, renda, Magic Number e peso contra o alvo.
+  - **Segurar** faz uma varredura: o toro cresce, acelera e acende; ao soltar, volta ao normal.
+  - **Passar o mouse** no PC realça o ativo sob o cursor.
 - O resto do app não mudou. O painel completo da 2.0.0 foi desfeito, e o código dele fica no histórico do repositório.
 - **Leve:**
   - até 24 quadros/s (20 no celular), só com o núcleo visível;
   - menos fios se o aparelho não acompanhar;
-  - botão de pausa, lembrado em cada aparelho;
-  - parado com "reduzir movimento".
+  - parado com "reduzir movimento", mas ainda responde ao toque.
 
 ## Novidades da 1.9 · Voz J.A.R.V.I.S.
 

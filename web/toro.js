@@ -53,39 +53,90 @@ function criarFios(s, n) {
 }
 
 let LOOP = 0;
-/** Liga o toro num <canvas>. `mira` e `rotulo` são elementos posicionados sobre ele (opcionais). */
-export function ligarToro(cv, s, { mira, rotulo, botao } = {}) {
+/**
+ * Liga o toro num <canvas>. Interações:
+ * - arrastar gira o toro (com inércia); no mouse, arrastar na vertical inclina;
+ * - tocar/clicar seleciona o ativo do fio mais próximo: os fios dele acendem e `aoSelecionar(ticker)` é chamado;
+ * - segurar acelera o giro e acende tudo ("varredura"); soltar volta ao normal;
+ * - no PC, passar o mouse realça o ativo sob o cursor.
+ */
+export function ligarToro(cv, s, { mira, rotulo, aoSelecionar } = {}) {
   const ctx = cv.getContext('2d'); if (!ctx) return;
-  const raiz = cv.parentElement;
   const quieto = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const celular = innerWidth < 700;
   const fila = filaFoco(s);
   let densidade = celular ? 300 : 650;
   let fios = criarFios(s, densidade);
-  let W = 0, H = 0, dpr = 1;
-  const medir = () => { const b = cv.getBoundingClientRect(); dpr = celular ? 0.8 : Math.min(1.5, devicePixelRatio || 1); W = b.width; H = b.height; cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); };
-  medir(); new ResizeObserver(medir).observe(cv);
-  let visivel = true; new IntersectionObserver(([e]) => { visivel = e.isIntersecting; }).observe(cv);
+  let W = 0, H = 0, dpr = 1, pendente = true;
+  function pedir() { pendente = true; }
+  const medir = () => { const b = cv.getBoundingClientRect(); dpr = celular ? 0.8 : Math.min(1.5, devicePixelRatio || 1); W = b.width; H = b.height; cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); pedir(); };
+  let visivel = true;
 
-  // mira e rótulo percorrem os ativos
+  // estado da rotação: giro contínuo + o que o dedo/mouse acrescenta
+  let ay = 0, ax = 0.62, vy = 0, vx = 0, segurando = false, brilho = 0, escala = 1;
+  let sel = null, hover = null, selAte = 0;
+  const meios = [];   // [x, y, ticker] do meio de cada fio no último quadro (para achar o mais próximo)
+
+  // mira e rótulo: percorrem os ativos sozinhos; uma seleção do dono tem prioridade por 10 s
   let fi = 0, alvo3 = null;
-  const focar = () => {
-    const f = fila[fi % Math.max(1, fila.length)]; fi++; if (!f) return;
-    const p = (s.posicoes || []).find(x => x.ticker === f.ticker);
-    const fio = fios.find(x => x.t === f.ticker && !x.ponta); alvo3 = fio ? fio.pts[Math.floor(fio.pts.length / 2)] : null;
-    if (rotulo) rotulo.innerHTML = `<b>${f.compra ? 'CANDIDATO' : 'OBSERVANDO'}</b> ${esc(f.ticker)} · ${p ? brl(p.preco) : '—'} · zona ${esc(p?.zona ?? '—')} · ${f.compra ? `plano ${f.compra.qtd} × ${brl(f.compra.preco)}` : `peso ${nf(p?.peso ?? 0, 1)}% / alvo ${nf(f.alvo, 0)}%`}`;
+  const mostrar = (ticker, origem) => {
+    const f = fila.find(x => x.ticker === ticker) ?? { ticker, alvo: 0 };
+    const p = (s.posicoes || []).find(x => x.ticker === ticker);
+    const fio = fios.find(x => x.t === ticker && !x.ponta); alvo3 = fio ? fio.pts[Math.floor(fio.pts.length / 2)] : null;
+    if (rotulo) rotulo.innerHTML = `<b>${origem === 'dono' ? 'SELECIONADO' : f.compra ? 'CANDIDATO' : 'OBSERVANDO'}</b> ${esc(ticker)} · ${p ? brl(p.preco) : '—'} · zona ${esc(p?.zona ?? '—')} · ${f.compra ? `plano ${f.compra.qtd} × ${brl(f.compra.preco)}` : `peso ${nf(p?.peso ?? 0, 1)}% / alvo ${nf(f.alvo, 0)}%`}`;
   };
+  const focar = () => { if (sel && performance.now() < selAte) return; sel = null; const f = fila[fi++ % Math.max(1, fila.length)]; if (f) mostrar(f.ticker); pedir(); };
   focar();
   const idFoco = setInterval(() => { if (!document.body.contains(cv)) return clearInterval(idFoco); if (!document.hidden) focar(); }, 3500);
 
-  const id = ++LOOP;
-  let t0 = performance.now(), ult = 0;
-  const desenhar = (agora) => {
-    const t = (agora - t0) / 1000;
-    // inclinação moderada: o furo do toro fica aberto atrás do patrimônio
-    const ay = t * 0.16, ax = 0.62 + Math.sin(t * 0.21) * 0.14, az = 0.3 + Math.sin(t * 0.13) * 0.1;
-    const [sy, cy, sx, cx, sz, cz] = [Math.sin(ay), Math.cos(ay), Math.sin(ax), Math.cos(ax), Math.sin(az), Math.cos(az)];
-    const esc3 = Math.min(W, H) * 0.31, ox = W / 2, oy = H / 2, D = 3.4;
+  const proximo = (cx, cy, raio) => {
+    let melhor = null, d2 = raio * raio;
+    for (const [x, y, t] of meios) { const d = (x - cx) ** 2 + (y - cy) ** 2; if (d < d2) { d2 = d; melhor = t; } }
+    return melhor;
+  };
+  const pos = (e) => { const b = cv.getBoundingClientRect(); return [e.clientX - b.left, e.clientY - b.top]; };
+
+  // ponteiro: arrastar gira, tocar seleciona, segurar faz a varredura
+  let ini = null, ultX = 0, ultY = 0, ultT = 0, timerSegurar = 0;
+  cv.addEventListener('pointerdown', (e) => {
+    ini = { x: e.clientX, y: e.clientY, moveu: false }; ultX = e.clientX; ultY = e.clientY; ultT = performance.now();
+    vy = vx = 0; hover = null;
+    clearTimeout(timerSegurar); timerSegurar = setTimeout(() => { if (ini && !ini.moveu) { segurando = true; pedir(); } }, 320);
+    try { cv.setPointerCapture(e.pointerId); } catch {}
+  });
+  cv.addEventListener('pointermove', (e) => {
+    if (ini) {
+      const dx = e.clientX - ultX, dy = e.clientY - ultY, dt = Math.max(8, performance.now() - ultT);
+      if (Math.abs(e.clientX - ini.x) + Math.abs(e.clientY - ini.y) > 6) ini.moveu = true;
+      if (ini.moveu) {
+        ay += dx * 0.012; vy = dx * 0.012 / dt * 1000;
+        if (e.pointerType === 'mouse') { ax = Math.max(0.15, Math.min(1.35, ax + dy * 0.008)); vx = dy * 0.008 / dt * 1000; }
+        pedir();
+      }
+      ultX = e.clientX; ultY = e.clientY; ultT = performance.now();
+    } else if (e.pointerType === 'mouse') {
+      const [x, y] = pos(e); const t = proximo(x, y, 26);
+      if (t !== hover) { hover = t; cv.style.cursor = t ? 'pointer' : 'grab'; pedir(); }
+    }
+  });
+  const soltar = (e) => {
+    clearTimeout(timerSegurar);
+    if (ini && !ini.moveu && !segurando && e.type === 'pointerup') {
+      const [x, y] = pos(e); const t = proximo(x, y, celular ? 38 : 30);
+      if (t) { sel = t; selAte = performance.now() + 10000; mostrar(t, 'dono'); aoSelecionar?.(t); }
+      else { sel = null; aoSelecionar?.(null); }
+      pedir();
+    }
+    segurando = false; ini = null; pedir();
+  };
+  cv.addEventListener('pointerup', soltar); cv.addEventListener('pointercancel', soltar);
+  cv.addEventListener('pointerleave', () => { if (hover) { hover = null; pedir(); } });
+  cv.addEventListener('click', (e) => e.stopPropagation());
+  cv.style.cursor = 'grab'; cv.style.touchAction = 'pan-y';
+
+  const desenhar = () => {
+    const sy = Math.sin(ay), cy = Math.cos(ay), sx = Math.sin(ax), cx = Math.cos(ax), az = 0.3, sz = Math.sin(az), cz = Math.cos(az);
+    const esc3 = Math.min(W, H) * 0.31 * escala, ox = W / 2, oy = H / 2, D = 3.4;
     const proj = (p) => {
       const [x, y, z] = p;
       const x1 = x * cy - y * sy, y1 = x * sy + y * cy;
@@ -96,11 +147,18 @@ export function ligarToro(cv, s, { mira, rotulo, botao } = {}) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, W, H);
     ctx.lineWidth = 0.55;
-    const baldes = new Map(), pontas = [];
+    const foco = sel ?? hover;
+    const baldes = new Map(), pontas = [], destaque = new Path2D();
+    meios.length = 0;
     for (const f of fios) {
       const pr = f.pts.map(proj);
+      if (!f.ponta) { const m = pr[Math.floor(pr.length / 2)]; meios.push([m[0], m[1], f.t]); }
+      if (foco && f.t === foco) {
+        destaque.moveTo(pr[0][0], pr[0][1]); for (let j = 1; j < pr.length; j++) destaque.lineTo(pr[j][0], pr[j][1]);
+        continue;
+      }
       let zs = 0; for (const q of pr) zs += q[2];
-      const nivel = zs / pr.length > 0.2 ? 0 : zs / pr.length > -0.25 ? 1 : 2;   // fundo, meio, frente
+      const nivel = zs / pr.length > 0.2 ? 0 : zs / pr.length > -0.25 ? 1 : 2;
       const chave = f.cor + nivel;
       let lista = baldes.get(chave); if (!lista) { lista = [[new Path2D(), 0]]; baldes.set(chave, lista); }
       let atual = lista[lista.length - 1]; if (atual[1] >= 60) { atual = [new Path2D(), 0]; lista.push(atual); }
@@ -108,34 +166,45 @@ export function ligarToro(cv, s, { mira, rotulo, botao } = {}) {
       atual[0].moveTo(pr[0][0], pr[0][1]); for (let j = 1; j < pr.length; j++) atual[0].lineTo(pr[j][0], pr[j][1]);
       if (f.ponta) pontas.push([pr[1][0], pr[1][1], f.cor, nivel]);
     }
+    const apaga = foco ? 0.55 : 1, acende = 1 + brilho * 1.4;
     for (const [chave, lista] of baldes) {
       const cor = chave.slice(0, 7), nivel = Number(chave.slice(7));
-      ctx.strokeStyle = cor; ctx.globalAlpha = [0.09, 0.2, 0.36][nivel] * (cor === '#cfeeff' ? 1 : 1.5);
+      ctx.strokeStyle = cor; ctx.globalAlpha = Math.min(1, [0.09, 0.2, 0.36][nivel] * (cor === '#cfeeff' ? 1 : 1.5) * apaga * acende);
       for (const [path] of lista) ctx.stroke(path);
     }
-    for (const [x, y, cor, nivel] of pontas) { ctx.globalAlpha = [0.3, 0.55, 0.95][nivel]; ctx.fillStyle = cor; ctx.fillRect(x - 1, y - 1, 2.2, 2.2); }
+    for (const [x, y, cor, nivel] of pontas) { ctx.globalAlpha = Math.min(1, [0.3, 0.55, 0.95][nivel] * acende); ctx.fillStyle = cor; ctx.fillRect(x - 1, y - 1, 2.2, 2.2); }
+    if (foco) {   // fios do ativo em foco acesos em dourado
+      ctx.globalAlpha = 0.9; ctx.strokeStyle = '#ffd08a'; ctx.lineWidth = 1.1; ctx.stroke(destaque);
+      ctx.globalAlpha = 0.25; ctx.lineWidth = 3.2; ctx.stroke(destaque);
+    }
     ctx.globalAlpha = 1;
     if (alvo3 && mira) { const [x, y] = proj(alvo3); mira.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`; }
   };
 
-  let pausado = false; try { pausado = localStorage.getItem('insa.toro.pausa') === '1'; } catch {}
-  const marcar = () => { if (!botao) return; botao.textContent = pausado ? '▶' : '❚❚'; botao.setAttribute('aria-pressed', String(pausado)); botao.title = pausado ? 'Animar o núcleo' : 'Pausar o núcleo'; };
-  marcar();
-  botao?.addEventListener('click', (e) => { e.stopPropagation(); pausado = !pausado; try { localStorage.setItem('insa.toro.pausa', pausado ? '1' : '0'); } catch {} marcar(); });
-  const alvoMs = celular ? 50 : 41;
-  let intervalos = 0, nInt = 0;
+  const id = ++LOOP, alvoMs = celular ? 50 : 41;
+  let ult = 0, intervalos = 0, nInt = 0;
   const quadro = (agora) => {
     if (id !== LOOP || !document.body.contains(cv)) return;            // saiu da tela: o laço morre
     requestAnimationFrame(quadro);
-    if (pausado || document.hidden || !visivel || agora - ult < alvoMs) return;
+    if (document.hidden || !visivel || agora - ult < alvoMs) return;
+    const dt = ult ? Math.min(0.1, (agora - ult) / 1000) : 0;
     if (ult && agora - ult < 400) { intervalos += agora - ult; nInt++; }
     ult = agora;
-    desenhar(agora);
+    // giro: base lento + inércia do arraste; segurar acelera e acende; parado com "reduzir movimento"
+    const base = quieto ? 0 : 0.16 * (segurando ? 6 : 1);
+    if (!ini) { ay += (base + vy) * dt; ax = Math.max(0.15, Math.min(1.35, ax + vx * dt)); vy *= Math.pow(0.12, dt); vx *= Math.pow(0.12, dt); if (!quieto) ax += (0.62 - ax) * Math.min(1, dt * 0.6); }
+    brilho += ((segurando ? 1 : 0) - brilho) * Math.min(1, dt * 6);
+    escala += ((segurando ? 1.07 : 1) - escala) * Math.min(1, dt * 6);
+    const animando = !quieto || Math.abs(vy) + Math.abs(vx) > 0.01 || segurando || Math.abs(brilho) > 0.01;
+    if (!animando && !pendente) return;
+    pendente = false;
+    desenhar();
     if (nInt === 40) {               // aparelho não acompanha: menos fios
       if (intervalos / nInt > alvoMs * 1.7 && densidade > 120) { densidade = Math.round(densidade * 0.6); fios = criarFios(s, densidade); }
       intervalos = 0; nInt = 0;
     }
   };
-  requestAnimationFrame(() => desenhar(t0 + 4000));
-  if (!quieto) requestAnimationFrame(quadro);
+  medir(); new ResizeObserver(medir).observe(cv);
+  new IntersectionObserver(([e]) => { visivel = e.isIntersecting; }).observe(cv);
+  requestAnimationFrame(quadro);
 }

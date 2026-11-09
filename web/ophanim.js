@@ -39,7 +39,7 @@ export function ophanim(s) {
   const lider = (de, quina, fim, cor) => `<polyline points="${P(de.x)},${P(de.y)} ${quina[0]},${quina[1]} ${fim[0]},${fim[1]}" fill="none" stroke="${cor}" stroke-width="1" stroke-opacity=".85"/>
     <circle cx="${P(de.x)}" cy="${P(de.y)}" r="2.6" fill="${cor}"/><circle cx="${quina[0]}" cy="${quina[1]}" r="1.6" fill="${cor}"/>`;
   const olhoIcone = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="3.2" fill="currentColor"/></svg>`;
-  return `<div class="oph" id="oph" role="img" aria-label="Núcleo (toro de fios, cada fio é parte do patrimônio de um ativo): patrimônio ${brl(t.patrimonio)}; ${A.map(a => `${a.desc} ${a.valor}`).join('; ')}">
+  return `<div class="oph" id="oph" role="group" aria-label="Núcleo (toro de fios: cada fio é parte do patrimônio de um ativo; arraste para girar, toque num fio para ver o ativo, segure para varrer): patrimônio ${brl(t.patrimonio)}; ${A.map(a => `${a.desc} ${a.valor}`).join('; ')}">
     <svg class="oph-fixo" viewBox="0 0 400 400" aria-hidden="true">
       ${lider({ x: 84, y: 106 }, [54, 54], [6, 54], c.cor)}
       ${lider({ x: 316, y: 106 }, [346, 54], [394, 54], c.cor)}
@@ -47,7 +47,6 @@ export function ophanim(s) {
       ${lider({ x: 296, y: 290 }, [340, 340], [394, 340], m.cor)}
     </svg>
     <canvas class="oph-toro" id="oph-toro" aria-hidden="true"></canvas><div class="oph-mira" id="oph-mira"></div>
-    <button type="button" class="oph-pausa" id="oph-pausa" aria-pressed="false">❚❚</button>
     <div class="oph-nucleo"><div><div class="oph-lbl">Patrimônio</div><div class="oph-val">${brl(t.patrimonio)}</div>
       <div class="oph-sub">${brl(t.investido, 0)} em ativos<br>${brl(t.caixa)} em caixa</div></div></div>
     <div class="oph-tx tl" style="--cor:${c.cor}"><i></i>${esc(c.desc)}</div>
@@ -63,8 +62,22 @@ export function ophanim(s) {
 export function ligarOphanim(s) {
   const raiz = document.getElementById('oph'); if (!raiz) return;
   const A = dadosOphanim(s), painel = document.getElementById('ophp');
-  ligarToro(document.getElementById('oph-toro'), s, { mira: document.getElementById('oph-mira'), rotulo: document.getElementById('oph-rot'), botao: document.getElementById('oph-pausa') });
   let ativo = null;
+  // tocar num fio abre o ativo dele
+  const zonaTx = { ataque: 'zona de ataque', neutra: 'neutra (abaixo do teto)', espera: 'em espera (acima do teto)', sem_dados: 'sem teto' };
+  const fase = (s.fases || []).find(f => f.id === s.missao?.fase?.id);
+  const verAtivo = (t) => {
+    if (!t) return fechar();
+    const p = (s.posicoes || []).find(x => x.ticker === t); if (!p) return;
+    ativo = 'ativo:' + t;
+    painel.style.setProperty('--cor', p.zona === 'ataque' ? '#34f5a4' : p.zona === 'espera' ? '#ffb347' : '#48e5ff');
+    painel.className = 'oph-painel doca';
+    painel.innerHTML = `<div class="oph-cab">${esc(p.tipo ?? 'Ativo')} · ${esc(zonaTx[p.zona] ?? p.zona)}</div><b>${esc(t)} · ${brl(p.preco)}${p.var_dia != null ? ` <small class="${p.var_dia >= 0 ? 'up' : 'dn'}">${p.var_dia > 0 ? '+' : ''}${nf(p.var_dia)}%</small>` : ''}</b>
+      <div>${nf(p.qtd, 0)} cotas · PM ${brl(p.preco_medio)} · valor ${brl(p.valor)} · renda ${brl(p.renda_mes_estimada)}/mês${p.magic ? ` · Magic ${nf(p.qtd, 0)}/${p.magic.magic}` : ''}</div>
+      <div class="oph-barra"><em><i style="width:${Math.min(100, p.peso / Math.max(1, fase?.pesos?.[t] ?? p.peso) * 100)}%"></i></em><span>peso ${pct(p.peso)} / alvo ${pct(fase?.pesos?.[t] ?? 0, 0)}</span></div>`;
+    painel.hidden = false;
+  };
+  ligarToro(document.getElementById('oph-toro'), s, { mira: document.getElementById('oph-mira'), rotulo: document.getElementById('oph-rot'), aoSelecionar: verAtivo });
   const abrir = (i) => {
     const a = A[i], o = a.olhos[0] ?? { titulo: a.desc, linhas: [] };
     if (ativo === i) return fechar();
