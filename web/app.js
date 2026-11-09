@@ -1,6 +1,5 @@
 // INSA Command · interface (PWA). Sem frameworks, sem rastreadores.
 import { ophanim, ligarOphanim } from './ophanim.js';
-import { painel, ligarPainel } from './painel.js';
 import { paraFala, VOZES_MASCULINAS } from '../src/fala.ts';
 
 const $app = document.getElementById('app');
@@ -48,7 +47,7 @@ const EMBLEM = `<svg viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradien
 async function gate() {
   let sess;
   try { sess = await api('/api/session'); } catch { sess = { autenticado: false, configurado: true }; }
-  if (sess.autenticado) return route(location.hash.slice(2) || 'comando');
+  if (sess.autenticado) return route(location.hash.slice(2) || 'cockpit');
   if (sess.desktop) return pinGate(sess);
   const novo = !sess.configurado;
   const rotuloPadrao = /android/i.test(navigator.userAgent) ? 'Celular Android' : /windows/i.test(navigator.userAgent) ? 'PC Windows' : 'Aparelho';
@@ -67,7 +66,7 @@ async function gate() {
     e.preventDefault(); const b = f.querySelector('button'); const msg = document.getElementById('msg'); msg.textContent = ''; b.disabled = true;
     try {
       await api(novo ? '/api/auth/dispositivo/configurar' : '/api/auth/dispositivo/parear', { method: 'POST', body: novo ? { setupToken: f.cod.value, rotulo: f.rotulo.value } : { codigo: f.cod.value, rotulo: f.rotulo.value } });
-      S = null; await boot(); route('comando');
+      S = null; await boot(); route('cockpit');
     } catch (err) { msg.textContent = err.message; f.cod.value = ''; f.cod.focus(); b.disabled = false; }
   };
 }
@@ -88,7 +87,7 @@ function pinGate(sess) {
     e.preventDefault(); const b = f.querySelector('button'); const msg = document.getElementById('msg'); msg.textContent = '';
     if (novo && f.pin.value !== f.pin2.value) { msg.textContent = 'Os PINs não coincidem.'; return; }
     b.disabled = true;
-    try { await api(novo ? '/api/auth/pin/setup' : '/api/auth/pin/unlock', { method: 'POST', body: { pin: f.pin.value } }); S = null; await boot(); route('comando'); }
+    try { await api(novo ? '/api/auth/pin/setup' : '/api/auth/pin/unlock', { method: 'POST', body: { pin: f.pin.value } }); S = null; await boot(); route('cockpit'); }
     catch (err) { msg.textContent = err.message; f.pin.value = ''; f.pin.focus(); b.disabled = false; }
   };
 }
@@ -112,15 +111,15 @@ function updBanner() {
 }
 
 // ───────── moldura ─────────
-const PRINCIPAIS = ['comando', 'manuel', 'radar', 'posicoes'];
+const PRINCIPAIS = ['cockpit', 'manuel', 'radar', 'posicoes'];
 const NAV = [
-  ['comando', '00', 'Comando', '✦'], ['cockpit', '01', 'Cockpit', '◎'], ['manuel', '02', 'M.A.N.U.E.L.', '◈'], ['radar', '03', 'Radar', '◉'], ['posicoes', '04', 'Pelotões', '▤'],
+  ['cockpit', '01', 'Cockpit', '◎'], ['manuel', '02', 'M.A.N.U.E.L.', '◈'], ['radar', '03', 'Radar', '◉'], ['posicoes', '04', 'Pelotões', '▤'],
   ['registrar', '05', 'Registrar', '＋'], ['estrategia', '06', 'Estratégia', '◆'], ['plano', '07', 'Fases e regras', '◇'], ['razao', '08', 'Livro-razão', '≣'], ['ajustes', '09', 'Ajustes', '⚙'],
 ];
 function frame(view, inner) {
   const feed = feedStatus();
   $app.innerHTML = `
-  <div class="hudtop" id="hudtop"><header class="top"><a class="brand" href="#/comando" aria-label="INSA Command, início">${EMBLEM}<span><b>INSA</b><small>Command</small></span></a>
+  <div class="hudtop" id="hudtop"><header class="top"><a class="brand" href="#/cockpit" aria-label="INSA Command, início">${EMBLEM}<span><b>INSA</b><small>Command</small></span></a>
     <span class="sys"><i class="dot on"></i>Sistemas online</span>
     <span class="feed" id="pgst" title="${esc(feed.title)}"><i class="dot ${feed.cls}"></i><span>${esc(feed.label)}</span></span>
     <div class="clock"><b id="clk">--:--:--</b><small id="clkd"></small></div></header>${fita()}</div>
@@ -131,7 +130,7 @@ function frame(view, inner) {
   </div>
   <nav class="tabs" aria-label="Seções">${NAV.filter(n => PRINCIPAIS.includes(n[0])).map(([id, , t, i]) => `<a href="#/${id}" class="${view === id ? 'on' : ''}" ${view === id ? 'aria-current="page"' : ''}><i aria-hidden="true">${i}</i>${id === 'manuel' ? 'Manuel' : t}</a>`).join('')}
     <button type="button" class="${PRINCIPAIS.includes(view) ? '' : 'on'}" id="mais" aria-haspopup="dialog" aria-expanded="false"><i aria-hidden="true">☰</i>Mais</button></nav>
-  ${['comando', 'cockpit', 'posicoes', 'radar'].includes(view) ? '<a class="fab" href="#/registrar" aria-label="Registrar lançamento">＋</a>' : ''}
+  ${['cockpit', 'posicoes', 'radar'].includes(view) ? '<a class="fab" href="#/registrar" aria-label="Registrar lançamento">＋</a>' : ''}
   <div class="folha" id="folha" hidden><div class="folha-fundo" data-fecha></div><div class="folha-painel" role="dialog" aria-label="Mais seções">
     <div class="folha-alca" aria-hidden="true"></div>
     ${NAV.filter(n => !PRINCIPAIS.includes(n[0])).map(([id, , t, i]) => `<a href="#/${id}" class="${view === id ? 'on' : ''}"><i aria-hidden="true">${i}</i>${t}</a>`).join('')}
@@ -216,13 +215,6 @@ function calendarChart(cal) {
   }).join('');
   return `<div class="chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Proventos por mês: estimado e recebido">${bars}</svg></div>
     <div class="legend"><span><i style="border:1px dashed rgba(72,229,255,.35)"></i>estimado</span><span><i style="background:#5cffb0"></i>recebido (razão)</span></div>`;
-}
-
-function comando() {
-  const s = S;
-  if (!(s.posicoes || []).length) return cockpit();
-  frame('comando', `<div class="eyebrow">INSA / Painel de comando</div>${painel(s)}`);
-  ligarPainel(s, api);
 }
 
 function cockpit() {
@@ -390,7 +382,7 @@ function registrar(params) {
       document.getElementById('cancel').onclick = () => { document.getElementById('prev').innerHTML = ''; };
       document.getElementById('ok').onclick = async (ev) => {
         ev.target.disabled = true;
-        try { await api('/api/movements', { method: 'POST', body: { ...body, confirmado: true } }); toast('Lançamento gravado no razão.'); await load(); route('comando'); }
+        try { await api('/api/movements', { method: 'POST', body: { ...body, confirmado: true } }); toast('Lançamento gravado no razão.'); await load(); route('cockpit'); }
         catch (err) { toast(err.message); ev.target.disabled = false; }
       };
     } catch (err) { toast(err.message); }
@@ -579,7 +571,7 @@ function ajustes() {
 
 // ───────── radar ao vivo ─────────
 let LIVE = null, liveTimer = null, liveAuto = true;
-const curView = () => (location.hash.slice(2) || 'comando').split('?')[0];
+const curView = () => (location.hash.slice(2) || 'cockpit').split('?')[0];
 function spark(serie, ref, w = 120, h = 32) {
   if (!serie || serie.length < 2) return `<svg class="spark" viewBox="0 0 ${w} ${h}" aria-hidden="true"></svg>`;
   const vals = ref ? [...serie, ref] : serie;
@@ -947,20 +939,20 @@ async function load() {
 async function route(view) {
   if (view === 'gate') { history.replaceState(null, '', '#/'); return gate(); }
   // rota pedida explicitamente vence a do endereço (ex.: voltar ao cockpit depois de gravar)
-  const alvo = (typeof view === 'string' && view) || location.hash.slice(2) || 'comando';
+  const alvo = (typeof view === 'string' && view) || location.hash.slice(2) || 'cockpit';
   const [name, q] = alvo.split('?');
-  const v = ['comando', 'cockpit', 'manuel', 'radar', 'posicoes', 'registrar', 'estrategia', 'razao', 'plano', 'ajustes', 'migracao'].includes(name) ? name : 'comando';
+  const v = ['cockpit', 'manuel', 'radar', 'posicoes', 'registrar', 'estrategia', 'razao', 'plano', 'ajustes', 'migracao'].includes(name) ? name : 'cockpit';
   const hash = `#/${v}${q && v === name ? '?' + q : ''}`;
   if (hash !== location.hash) history.replaceState(null, '', hash);
   try {
     if (!S) await load();
-    await ({ comando, cockpit, manuel, radar, posicoes, registrar: () => registrar(new URLSearchParams(q || '')), estrategia, razao, plano, ajustes, migracao })[v]();
+    await ({ cockpit, manuel, radar, posicoes, registrar: () => registrar(new URLSearchParams(q || '')), estrategia, razao, plano, ajustes, migracao })[v]();
     window.scrollTo(0, 0);
   } catch (e) { if (e.message !== 'Sessão expirada.') $app.innerHTML = `<div class="gate"><div class="card"><h2>Falha ao carregar</h2><p class="muted">${esc(e.message)}</p><div class="actions" style="justify-content:center"><button class="btn" id="retry">Tentar de novo</button></div></div></div>`; document.getElementById('retry')?.addEventListener('click', () => location.reload()); }
 }
 window.addEventListener('hashchange', () => { if (S || offline) route(); });
 // Atualiza o estado a cada 2 min com o app aberto e visível (cotações chegam pelo cron)
-setInterval(async () => { if (S && document.visibilityState === 'visible') { const v = (location.hash.slice(2) || 'comando').split('?')[0]; if (['registrar', 'radar', 'migracao', 'manuel'].includes(v)) return; try { await load(); if (['comando', 'cockpit', 'posicoes'].includes(v)) route(); } catch {} } }, 120000);
+setInterval(async () => { if (S && document.visibilityState === 'visible') { const v = (location.hash.slice(2) || 'cockpit').split('?')[0]; if (['registrar', 'radar', 'migracao', 'manuel'].includes(v)) return; try { await load(); if (['cockpit', 'posicoes'].includes(v)) route(); } catch {} } }, 120000);
 if (!DESK && !SHELL && 'serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 if (SHELL) {
   SHELL.updateStatus().then(s => { UPD = s; });
