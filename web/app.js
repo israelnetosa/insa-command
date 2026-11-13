@@ -745,7 +745,7 @@ function migracao() {
 }
 
 // ───────── M.A.N.U.E.L. · console ─────────
-let CONV = null, AUDIO = null;
+let CONV = null, AUDIO = null, FALA_GERACAO = 0;
 function md(t) {
   const linhas = esc(t).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`([^`]+)`/g, '<code>$1</code>').split('\n');
   let out = '', lista = false;
@@ -807,22 +807,36 @@ function holoEstado(e) {
   const t = document.getElementById('estado'); if (t) t.textContent = { pensando: 'Analisando', falando: 'Transmitindo' }[e] || 'Em prontidão';
 }
 const AUDIO_CACHE = new Map();   // mesma fala tocada de novo não gasta outra chamada
-function falar(texto) {
+// Cada chamada tem uma "geração"; se outra falar()/pararFala() acontecer antes do áudio
+// carregar (ex.: o Senhor clicou "ouvir" de novo por estar demorando), a geração antiga
+// é descartada ao chegar — nunca toca por cima da mais nova (evita a voz dobrada).
+function falar(texto, botao) {
   pararFala();
+  const minhaGeracao = FALA_GERACAO;
   const cfg = CONV?.config || {};
   if (cfg.voz_motor === 'desligada') return;
   const limpo = paraFala(texto);
   if (!limpo) return;
+  if (botao) { botao.disabled = true; botao.dataset.rotuloOriginal ??= botao.textContent; botao.textContent = '⏳ carregando…'; }
+  const restaurarBotao = () => { if (botao) { botao.disabled = false; botao.textContent = botao.dataset.rotuloOriginal; } };
   if (cfg.voz_motor === 'gemini' && CONV?.chaves?.gemini) {
     const chave = (cfg.voz_nome || '') + '|' + limpo;
     holoEstado('pensando');
     const pronto = AUDIO_CACHE.get(chave) ?? fetch('/api/manuel/voz', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ texto: limpo, voz: cfg.voz_nome }) })
       .then(r => r.ok ? r.blob() : r.json().then(j => Promise.reject(new Error(j.erro))))
       .then(b => { const u = URL.createObjectURL(b); if (AUDIO_CACHE.size > 20) AUDIO_CACHE.delete(AUDIO_CACHE.keys().next().value); AUDIO_CACHE.set(chave, Promise.resolve(u)); return u; });
-    pronto.then(u => { AUDIO = new Audio(u); AUDIO.onplay = () => holoEstado('falando'); AUDIO.onended = AUDIO.onpause = () => holoEstado(null); return AUDIO.play(); })
-      .catch(e => { AUDIO_CACHE.delete(chave); toast('Voz natural indisponível agora (' + e.message + '). Usando a voz do aparelho.'); falarAparelho(limpo); });
+    pronto.then(u => {
+      restaurarBotao();
+      if (minhaGeracao !== FALA_GERACAO) return;   // já foi cancelada por um novo pedido: não toca
+      AUDIO = new Audio(u); AUDIO.onplay = () => holoEstado('falando'); AUDIO.onended = AUDIO.onpause = () => holoEstado(null); return AUDIO.play();
+    }).catch(e => {
+      restaurarBotao(); AUDIO_CACHE.delete(chave);
+      if (minhaGeracao !== FALA_GERACAO) return;
+      toast('Voz natural indisponível agora (' + e.message + '). Usando a voz do aparelho.'); falarAparelho(limpo);
+    });
     return;
   }
+  restaurarBotao();
   falarAparelho(limpo);
 }
 // Voz do aparelho: uma fala só (sem picotar por linha), voz masculina pt-BR quando existir, ritmo natural
@@ -846,7 +860,7 @@ function falarAparelho(texto) {
     speechSynthesis.speak(u);
   });
 }
-function pararFala() { try { speechSynthesis.cancel(); } catch {} if (AUDIO) { AUDIO.pause(); AUDIO = null; } holoEstado(null); }
+function pararFala() { FALA_GERACAO++; try { speechSynthesis.cancel(); } catch {} if (AUDIO) { AUDIO.pause(); AUDIO = null; } holoEstado(null); }
 
 async function manuel() {
   CONV = await api('/api/manuel/conversa');
@@ -870,7 +884,7 @@ async function manuel() {
       <form id="cf" class="composer"><label class="sr" for="ct">Mensagem</label>
         <textarea id="ct" name="t" rows="2" maxlength="4000" placeholder="Ex.: comprei 3 BTLG11 a 97,80 · onde aplico R$ 500? · ia: pergunta aberta"></textarea>
         <button class="btn">Enviar</button></form>
-      <p class="faint">No modo econômico, a IA externa só é acionada quando a mensagem começa com <b>ia:</b>. Todo o resto é respondido pelo motor do app, com 0 tokens.</p>
+      <p class="faint">Perguntas de dado puro (leitura, zona, Magic Number, marcos, renda, um ativo) o próprio app responde na hora, 0 tokens. O resto — opinião, sugestão, cenário, bate-papo — já vai para a IA sozinho; o prefixo <b>ia:</b> só força a IA mesmo quando a pergunta parece simples.</p>
       <p class="faint">M.A.N.U.E.L. analisa e organiza; não envia ordens nem é recomendação de investimento. Lançamentos só entram no razão com o seu clique.</p>
     </div>`);
   const th = document.getElementById('thread');
@@ -913,7 +927,7 @@ async function manuel() {
   document.getElementById('limpar').onclick = async () => { if (!confirm('Limpar a conversa? Lançamentos e propostas não são afetados.')) return; await api('/api/manuel/limpar', { method: 'POST', body: {} }); manuel(); };
   th.addEventListener('click', async (e) => {
     const t = e.target.closest('button'); if (!t) return;
-    if (t.dataset.falar !== undefined) { const balao = t.closest('.balao'); falar(balao.innerText.replace(/🔊 ouvir[\s\S]*$/, '')); return; }
+    if (t.dataset.falar !== undefined) { const balao = t.closest('.balao'); falar(balao.innerText.replace(/🔊 ouvir[\s\S]*$/, ''), t); return; }
     const id = t.dataset.conf || t.dataset.rec; if (!id) return;
     t.disabled = true;
     try {

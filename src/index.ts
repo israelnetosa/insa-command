@@ -327,11 +327,12 @@ async function api(req: Request, env: Env, url: URL): Promise<Response> {
       return json({ texto: r.texto, meta, propostas: await propostasPorIds(env, r.propostas) });
     };
 
-    // 1. Motor local: perguntas do dia a dia sem gastar tokens
-    if (economico) {
-      const local = await responderLocal(texto, tk, new Date(), true).catch(() => null);
-      if (local) return registrar(local, { local: true });
-    }
+    // 1. Motor local: só o que é dado puro e determinístico (leitura, zona, magic number, marcos, renda,
+    // um ativo, lançamentos claros). Qualquer coisa que peça interpretação, sugestão, humor ou cenário
+    // (ex.: "o que acha?", "e agora?", perguntas vagas ou de bate-papo) devolve null e cai para a IA —
+    // sem precisar do prefixo "ia:". É isso que faz o M.A.N.U.E.L. responder como um agente, não um robô de leitura.
+    const local = await responderLocal(texto, tk, new Date(), false).catch(() => null);
+    if (local) return registrar(local, { local: true });
     // 2. Mesma pergunta com a mesma carteira na última hora: reaproveita a resposta
     const st = await tk.state();
     const digital = (st.posicoes || []).map((p: any) => `${p.ticker}:${p.qtd}`).join(',') + '|' + st.totais.caixa + '|' + hojeISO();

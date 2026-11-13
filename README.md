@@ -16,6 +16,12 @@ Centro de comando **privado** da carteira INSA Dividend Army. É a sucessora do 
 | Peso do app | 412 KB de JS | 35 KB (12 KB comprimido) |
 | Hospedagem | Presa ao Manus | Sua conta Cloudflare (plano gratuito) |
 
+## Novidades da 2.1 · M.A.N.U.E.L. agente, sem voz dobrada
+
+- **Corrigido:** clicar "ouvir" de novo enquanto a fala anterior ainda carregava fazia duas vozes tocarem juntas. Agora cada pedido tem uma geração própria: só o mais novo toca, e o botão mostra "⏳ carregando…" enquanto espera.
+- **M.A.N.U.E.L. deixa de ser só um leitor de números:** antes, sem o prefixo "ia:", toda mensagem caía no motor local — mesmo perguntas abertas, de opinião ou de bate-papo, que voltavam com "use ia: para isso". Agora só o que é dado puro e determinístico (leitura, zona, Magic Number, marcos, renda, um ativo) é respondido localmente, de graça; qualquer coisa que peça interpretação, sugestão ou cenário vai direto para a IA, sem precisar de prefixo.
+- **Personalidade mais alerta:** o prompt do sistema passa a pedir que M.A.N.U.E.L. leia o cenário e sugira um movimento ou aponte um alerta por conta própria, não só responda o que foi perguntado — com humor leve nas horas boas e seriedade total em perdas, caixa no vermelho ou decisões de risco.
+
 ## Novidades da 2.0.1 · Núcleo em toro
 
 - O centro do cockpit trocou os anéis por um **toro 3D de fios**, inspirado num painel de pesquisa. Cada fio é uma parte do patrimônio de um ativo, na proporção do valor, colorido pela classe: dourado para FIIs, branco para ações, violeta para ETF e ciano para cripto.
