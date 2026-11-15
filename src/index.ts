@@ -31,7 +31,8 @@ function withHeaders(res: Response, extra: Record<string, string> = {}) {
   return r;
 }
 
-const MOV_TIPOS = new Set(['compra', 'venda', 'provento', 'aporte', 'retirada', 'desdobramento', 'grupamento', 'taxa', 'ajuste_caixa']);
+// saldo_inicial entra também por aqui para corrigir o preço médio de partida (anula-se o antigo e grava-se o novo)
+const MOV_TIPOS = new Set(['saldo_inicial', 'compra', 'venda', 'provento', 'aporte', 'retirada', 'desdobramento', 'grupamento', 'taxa', 'ajuste_caixa']);
 
 function normalizeMov(b: any): Movement {
   const tipo = String(b.tipo ?? '');
