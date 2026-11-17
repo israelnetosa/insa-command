@@ -1,6 +1,7 @@
 // INSA Command · Worker principal
 // Regra de ouro: toda rota /api, exceto login, exige sessão do dono. Nada é público.
 
+import { lerBanco, conferir, configurado as bancoConfigurado } from './banco';
 import { handleAuth, currentSession, isConfigured, json, type Env } from './auth';
 import { buildState, replay, planoCompras, faseAtual, LedgerError, type Movement } from './engine';
 import { conversar, voz, explicarErro, CONFIG_PADRAO, type Toolkit, type IAConfig } from './manuel';
@@ -479,6 +480,19 @@ async function api(req: Request, env: Env, url: URL): Promise<Response> {
     await audit(env, 'importacao_completa', { lancamentos: movs.length, ativos: b.assets.length });
     await refreshQuotes(env.DB, b.assets.map((a: any) => a.ticker), env.BRAPI_TOKEN).catch(() => null);
     return json({ ok: true, lancamentos: movs.length, ativos: b.assets.length });
+  }
+
+  // ───────── Banco (Open Finance via Pluggy): só leitura ─────────
+  if (path === '/api/banco/status' && req.method === 'GET') return json({ configurado: bancoConfigurado(env) });
+  if ((path === '/api/banco/bruto' || path === '/api/banco/conferencia') && req.method === 'GET') {
+    try {
+      const banco = await lerBanco(env);
+      await audit(env, 'banco_leitura', { investimentos: banco.investimentos.length });
+      if (path === '/api/banco/bruto') return json(banco);
+      const st = await state(env);
+      return json({ conexao: banco.conexao, ...conferir(st.posicoes, banco), caixa_app: st.totais.caixa,
+        contas: banco.contas.map((c: any) => ({ tipo: c.tipo, subtipo: c.subtipo, nome: c.nome, saldo: c.saldo })) });
+    } catch (e: any) { return json({ erro: String(e?.message ?? e) }, 502); }
   }
 
   if (path === '/api/export' && req.method === 'GET') {

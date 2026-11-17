@@ -13,6 +13,9 @@ export interface Env {
   ASSETS: Fetcher;
   SETUP_TOKEN?: string;
   BRAPI_TOKEN?: string;
+  PLUGGY_CLIENT_ID?: string;
+  PLUGGY_CLIENT_SECRET?: string;
+  PLUGGY_ITEM_ID?: string;
   RP_ID?: string;          // ex.: insa.seudominio.com (padrão: host da requisição)
   ANTHROPIC_API_KEY?: string;
   GEMINI_API_KEY?: string;
