@@ -11,7 +11,7 @@ export const INDICES: Record<string, { simbolo: string; nome: string; moeda?: st
   IBOV:   { simbolo: '^BVSP',   nome: 'Ibovespa' },
   IFIX:   { simbolo: 'IFIX.SA', nome: 'IFIX (FIIs)' },
   USDBRL: { simbolo: 'BRL=X',   nome: 'Dólar' },
-  BTCBRL: { simbolo: 'BTC-BRL', nome: 'Bitcoin' },
+  BTCBRL: { simbolo: 'BTC-USD', nome: 'Bitcoin' },   // o Yahoo não tem mais BTC-BRL: convertemos pelo dólar (ver bitcoinBRL)
   SP500:  { simbolo: '^GSPC',   nome: 'S&P 500', moeda: 'USD' },
 };
 const simbolo = (t: string) => INDICES[t]?.simbolo ?? (t.includes('.') ? t : `${t}.SA`);
@@ -47,8 +47,34 @@ async function brapi(ticker: string, token?: string): Promise<LiveQuote | null> 
   };
 }
 
+/** Bitcoin em reais: BTC-USD × dólar no Yahoo (com mini-gráfico); reserva no CoinGecko (BRL direto). */
+async function bitcoinYahoo(): Promise<LiveQuote | null> {
+  const [btc, usd] = await Promise.all([yahoo('BTCBRL'), yahoo('USDBRL')]);
+  if (!btc || !usd) return null;
+  const fx = usd.preco, fxAnt = usd.fechamento_ant ?? fx;
+  return {
+    ticker: 'BTCBRL', preco: Math.round(btc.preco * fx * 100) / 100,
+    fechamento_ant: btc.fechamento_ant ? Math.round(btc.fechamento_ant * fxAnt * 100) / 100 : null,
+    fonte: 'Yahoo Finance (BTC-USD × dólar)', cotado_em: Math.min(btc.cotado_em, usd.cotado_em), buscado_em: Date.now(),
+    serie: btc.serie ? btc.serie.map(v => Math.round(v * fx)) : null,
+  };
+}
+
+async function bitcoinCoingecko(): Promise<LiveQuote | null> {
+  const r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=brl&include_24hr_change=true&include_last_updated_at=true', { headers: UA });
+  if (!r.ok) return null;
+  const b = ((await r.json()) as any)?.bitcoin;
+  if (!(b?.brl > 0)) return null;
+  const chg = Number(b.brl_24h_change);
+  return {
+    ticker: 'BTCBRL', preco: b.brl, fechamento_ant: Number.isFinite(chg) ? Math.round(b.brl / (1 + chg / 100) * 100) / 100 : null,
+    fonte: 'CoinGecko (variação de 24 h)', cotado_em: (b.last_updated_at ?? Date.now() / 1000) * 1000, buscado_em: Date.now(), serie: null,
+  };
+}
+
 export async function fetchQuote(ticker: string, brapiToken?: string): Promise<LiveQuote | null> {
-  for (const fonte of [() => yahoo(ticker), () => brapi(ticker, brapiToken)]) {
+  const fontes = ticker === 'BTCBRL' ? [bitcoinYahoo, bitcoinCoingecko] : [() => yahoo(ticker), () => brapi(ticker, brapiToken)];
+  for (const fonte of fontes) {
     try { const q = await fonte(); if (q) return q; } catch { /* tenta a próxima fonte */ }
   }
   return null;

@@ -110,3 +110,20 @@ test('Magic Number: cotas para o provento de um mês comprar uma cota', () => {
   // não pagador
   assert.equal(magicNumber(66.9, 0, 2), null);
 });
+
+test('bitcoin em reais: BTC-USD × dólar no Yahoo, CoinGecko de reserva', async () => {
+  const { fetchQuote } = await import('../src/market.ts');
+  const orig = globalThis.fetch;
+  const chart = (preco: number, ant: number, serie: number[]) => new Response(JSON.stringify({ chart: { result: [{ meta: { regularMarketPrice: preco, chartPreviousClose: ant, regularMarketTime: 1794884000 }, indicators: { quote: [{ close: serie }] } }] } }));
+  try {
+    globalThis.fetch = (async (u: string) => u.includes('BTC-USD') ? chart(64000, 65000, [64500, 64000]) : u.includes('BRL%3DX') ? chart(5.8, 5.75, [5.8]) : new Response('', { status: 404 })) as any;
+    const q = await fetchQuote('BTCBRL');
+    assert.equal(q!.preco, 371200);
+    assert.equal(q!.fechamento_ant, 373750);
+    assert.deepEqual(q!.serie, [374100, 371200]);
+    globalThis.fetch = (async (u: string) => u.includes('coingecko') ? new Response(JSON.stringify({ bitcoin: { brl: 373036, brl_24h_change: 1.32, last_updated_at: 1794884071 } })) : new Response('', { status: 404 })) as any;
+    const c = await fetchQuote('BTCBRL');
+    assert.equal(c!.preco, 373036);
+    assert.match(c!.fonte, /CoinGecko/);
+  } finally { globalThis.fetch = orig; }
+});

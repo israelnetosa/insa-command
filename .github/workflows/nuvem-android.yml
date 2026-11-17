@@ -96,8 +96,11 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           BRAPI_TOKEN: ${{ secrets.BRAPI_TOKEN }}
+          PLUGGY_CLIENT_ID: ${{ secrets.PLUGGY_CLIENT_ID }}
+          PLUGGY_CLIENT_SECRET: ${{ secrets.PLUGGY_CLIENT_SECRET }}
+          PLUGGY_ITEM_ID: ${{ secrets.PLUGGY_ITEM_ID }}
         run: |
-          node -e 'const o={};for(const k of ["SETUP_TOKEN","GEMINI_API_KEY","ANTHROPIC_API_KEY","BRAPI_TOKEN"]) if(process.env[k]) o[k]=process.env[k].trim(); require("fs").writeFileSync("segredos.json",JSON.stringify(o))'
+          node -e 'const o={};for(const k of ["SETUP_TOKEN","GEMINI_API_KEY","ANTHROPIC_API_KEY","BRAPI_TOKEN","PLUGGY_CLIENT_ID","PLUGGY_CLIENT_SECRET","PLUGGY_ITEM_ID"]) if(process.env[k]) o[k]=process.env[k].trim(); require("fs").writeFileSync("segredos.json",JSON.stringify(o))'
           npx wrangler secret bulk segredos.json
           rm -f segredos.json
       - name: Conferir a nuvem no ar
