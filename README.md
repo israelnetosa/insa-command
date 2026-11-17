@@ -16,6 +16,14 @@ Centro de comando **privado** da carteira INSA Dividend Army. É a sucessora do 
 | Peso do app | 412 KB de JS | 35 KB (12 KB comprimido) |
 | Hospedagem | Presa ao Manus | Sua conta Cloudflare (plano gratuito) |
 
+## Novidades da 2.2 · Núcleo vivo em alta resolução
+
+- **Resolução nativa:** em aparelhos fortes (8 núcleos ou mais, como o Galaxy S24 Ultra), o toro é desenhado na densidade real da tela, até 3×, em vez de 0,8× como antes no celular.
+- **Movimento orgânico:** o toro respira, cada fio ondula e escorre pelo anel no seu próprio ritmo, pulsos de luz correm pelos fios e as pontas cintilam. Fios em curva suave, sem quinas.
+- **Holograma:** mistura aditiva com uma passada de brilho; profundidade com fios mais finos e apagados no fundo.
+- **Até ~1.000 fios a 60 quadros/s** nos aparelhos fortes. Se o aparelho não acompanhar, o app desliga o brilho, depois reduz fios e resolução, sozinho. Vibração curta ao selecionar e ao segurar.
+- A ideia é a mesma: cada fio é patrimônio de um ativo, na proporção do valor e na cor da classe.
+
 ## Novidades da 2.1 · M.A.N.U.E.L. agente, sem voz dobrada
 
 - **Corrigido:** clicar "ouvir" de novo enquanto a fala anterior ainda carregava fazia duas vozes tocarem juntas. Agora cada pedido tem uma geração própria: só o mais novo toca, e o botão mostra "⏳ carregando…" enquanto espera.
