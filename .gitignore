@@ -9,3 +9,5 @@ seed/
 test/privado.test.ts
 *.sqlite
 insa-migracao-*.json
+public/vendor/
+public/vosk/

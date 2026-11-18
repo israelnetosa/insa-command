@@ -40,7 +40,7 @@ jobs:
         uses: actions/setup-node@v5
         with: { node-version: 22, cache: npm }
       - if: steps.ok.outputs.seguir == 'sim'
-        run: npm ci && npm test && npm run build:web
+        run: npm ci && npm test && npm run build:web && bash scripts/modelo-voz.sh
       - name: Conferir o token da Cloudflare
         if: steps.ok.outputs.seguir == 'sim'
         run: |

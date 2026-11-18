@@ -13,7 +13,7 @@
     "url": "https://github.com/israelnetosa/insa-command"
   },
   "scripts": {
-    "build:web": "esbuild web/app.js --bundle --minify --format=esm --target=es2020 --outfile=public/app.js",
+    "build:web": "esbuild web/app.js --bundle --minify --format=esm --target=es2020 --outfile=public/app.js && node -e \"const f=require('fs');f.mkdirSync('public/vendor',{recursive:true});f.copyFileSync('node_modules/vosk-browser/dist/vosk.js','public/vendor/vosk.js')\"",
     "build:desktop": "npm run build:web && esbuild desktop/main.ts --bundle --platform=node --format=cjs --target=node22 --loader:.sql=text --external:electron --external:electron-updater --outfile=dist/main.cjs && node -e \"const f=require('fs');f.copyFileSync('desktop/preload.cjs','dist/preload.cjs');f.copyFileSync('desktop/preload-nuvem.cjs','dist/preload-nuvem.cjs')\"",
     "test": "node --test \"test/*.test.ts\"",
     "typecheck": "tsc -p .",
@@ -26,7 +26,8 @@
   },
   "dependencies": {
     "@capacitor-community/speech-recognition": "7.0.1",
-    "electron-updater": "^6.8.11"
+    "electron-updater": "^6.8.11",
+    "vosk-browser": "0.0.8"
   },
   "devDependencies": {
     "@capacitor/android": "^8.6.0",

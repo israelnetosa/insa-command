@@ -12,8 +12,8 @@ import { seedMovements, seedAssets, seedSettings, validarMigracao } from './seed
 
 const SECURITY_HEADERS: Record<string, string> = {
   'Content-Security-Policy': [
-    "default-src 'self'", "script-src 'self'", "style-src 'self' 'unsafe-inline'", "font-src 'self'",
-    "img-src 'self' data:", "connect-src 'self'", "media-src 'self' blob:", "worker-src 'self'",
+    "default-src 'self'", "script-src 'self' 'wasm-unsafe-eval'", "style-src 'self' 'unsafe-inline'", "font-src 'self'",
+    "img-src 'self' data:", "connect-src 'self'", "media-src 'self' blob:", "worker-src 'self' blob:",
     "manifest-src 'self'", "frame-ancestors 'none'", "base-uri 'none'", "form-action 'self'", "object-src 'none'",
   ].join('; '),
   'Strict-Transport-Security': 'max-age=63072000; includeSubDomains; preload',
@@ -562,6 +562,24 @@ async function api(req: Request, env: Env, url: URL): Promise<Response> {
   return json({ erro: 'Rota não encontrada.' }, 404);
 }
 
+async function modeloVoz(env: Env, url: URL): Promise<Response> {
+  const man = await env.ASSETS.fetch(new Request(new URL('/vosk/pt/manifesto.json', url)));
+  if (!man.ok) return new Response('Modelo de voz não publicado.', { status: 404 });
+  const m: { partes: string[]; tamanho: number; versao: string } = await man.json();
+  const { readable, writable } = new TransformStream();
+  (async () => {
+    try {
+      for (const p of m.partes) {
+        const r = await env.ASSETS.fetch(new Request(new URL('/vosk/pt/' + p, url)));
+        if (!r.ok || !r.body) throw new Error('parte ' + p);
+        await r.body.pipeTo(writable, { preventClose: true });
+      }
+      await writable.close();
+    } catch (e) { await writable.abort(e).catch(() => {}); }
+  })();
+  return new Response(readable, { headers: { 'Content-Type': 'application/gzip', 'Content-Length': String(m.tamanho), 'Cache-Control': 'public, max-age=2592000, immutable', ETag: '"' + m.versao + '"' } });
+}
+
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
@@ -569,6 +587,8 @@ export default {
       try { return withHeaders(await api(req, env, url), { 'Cache-Control': 'no-store' }); }
       catch (e) { console.error(e); return withHeaders(json({ erro: 'Erro interno.' }, 500), { 'Cache-Control': 'no-store' }); }
     }
+    // Modelo de voz da escuta "Hey Manuel": guardado em partes (limite de 25 MB por arquivo) e servido inteiro
+    if (url.pathname === '/vosk/pt.tar.gz' && req.method === 'GET') return withHeaders(await modeloVoz(env, url), {});
     const res = await env.ASSETS.fetch(req);
     const extra: Record<string, string> = {};
     // Fontes e ícones podem ficar em cache; HTML, JS e CSS sempre revalidam (atualizações chegam na hora)

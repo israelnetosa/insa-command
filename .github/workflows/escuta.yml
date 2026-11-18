@@ -1,0 +1,33 @@
+name: Escuta Hey Manuel (teste)
+on:
+  push:
+    paths: ['web/escuta.js', 'test/escuta*', 'scripts/modelo-voz.sh', '.github/workflows/escuta.yml']
+  workflow_dispatch:
+concurrency: { group: escuta, cancel-in-progress: true }
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with: { node-version: 22, cache: npm }
+      - run: npm ci && npm run build:web && bash scripts/modelo-voz.sh
+      - name: Vozes de teste (Piper, pt-BR)
+        run: |
+          pip install -q piper-tts==1.2.0 playwright==1.49.1 && python -m playwright install --with-deps chromium >/dev/null
+          sudo apt-get install -y -qq ffmpeg >/dev/null
+          V=https://huggingface.co/rhasspy/piper-voices/resolve/main/pt/pt_BR/faber/medium
+          curl -fsSL -o voz.onnx $V/pt_BR-faber-medium.onnx && curl -fsSL -o voz.onnx.json $V/pt_BR-faber-medium.onnx.json
+          mkdir -p wav; python - <<'PY'
+          import json, subprocess
+          casos = [("Olá Manuel", True), ("Ei Manuel", True), ("Bom dia Manuel", True), ("Manuel, leitura do dia", True),
+                   ("Bom dia pessoal, vamos trabalhar hoje", False), ("O mercado abriu em queda e o dólar subiu", False), ("Li o manual de instruções do aparelho", False)]
+          out = []
+          for i, (f, c) in enumerate(casos):
+              subprocess.run(f'echo "{f}" | piper -m voz.onnx -f wav/r{i}.wav', shell=True, check=True, capture_output=True)
+              subprocess.run(f'ffmpeg -loglevel error -y -f lavfi -t 2 -i anullsrc=r=22050:cl=mono -i wav/r{i}.wav -f lavfi -t 6 -i anullsrc=r=22050:cl=mono -filter_complex "[0][1][2]concat=n=3:v=0:a=1" -ar 16000 -ac 1 -c:a pcm_s16le wav/c{i}.wav', shell=True, check=True)
+              out.append({"frase": f, "chama": c, "wav": f"wav/c{i}.wav"})
+          json.dump(out, open("casos.json", "w"))
+          PY
+      - run: python test/escuta-e2e.py casos.json
