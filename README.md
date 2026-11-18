@@ -16,6 +16,14 @@ Centro de comando **privado** da carteira INSA Dividend Army. É a sucessora do 
 | Peso do app | 412 KB de JS | 35 KB (12 KB comprimido) |
 | Hospedagem | Presa ao Manus | Sua conta Cloudflare (plano gratuito) |
 
+## Novidades da 2.4 · "Hey Manuel"
+
+- **Escuta contínua opcional** (Ajustes → M.A.N.U.E.L.): com o app aberto, o Manuel atende a "olá Manuel", "ei Manuel", "bom dia Manuel"… sem tocar em nada. Bipe, o rosto aparece ouvindo, você fala o pedido; ele responde e, se fizer uma pergunta, já volta a ouvir.
+- **Grátis e no aparelho:** motor Vosk com o modelo pequeno de português (~31 MB, baixado uma vez e guardado). Nada de áudio sai do aparelho na escuta; o pedido em si usa o mesmo caminho do microfone (Android nativo, Chrome ou Gemini no Windows).
+- **Menos alarmes falsos:** gramática fechada só com as frases de chamada, confiança mínima na palavra "manuel" e palavras parecidas ("manual", "animal") que não chamam.
+- **Economia:** pausa quando a tela some, quando o Manuel fala e quando o microfone é usado; o rosto fecha sozinho 15 s depois de terminar. Indicador no topo; tocar nele desliga.
+- Teste de ponta a ponta no GitHub Actions: falas geradas por voz sintética tocadas num microfone falso (7 casos: 4 chamadas, 3 frases que não podem chamar).
+
 ## Novidades da 2.3 · Manuel fala, ouve e aparece
 
 - **Segure para falar:** botão de microfone em todas as telas e no console. Toque curto ouve por até 8 s; segurar ouve até soltar. No Android usa o reconhecedor do próprio telemóvel (grátis); no Chrome, o do navegador; no Windows, grava e o Gemini transcreve (conta no uso de IA do dia).
