@@ -617,3 +617,6 @@ html.com-rosto body { overflow: hidden; }
   box-shadow: 0 0 30px rgba(0,0,0,.6), 0 0 18px rgba(255,179,71,.2); color: #d8fbff; font: 400 13px/1.45 var(--body, system-ui); animation: holo-entra .4s cubic-bezier(.32,.72,0,1) both; }
 .aviso-mic > b { color: #ffb347; font: 700 14px var(--head); letter-spacing: .1em; text-transform: uppercase; }
 .aviso-mic div { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+/* parecer do Board: títulos das 4 seções */
+.md-h { margin: 12px 0 4px; font: 700 11px var(--mono); letter-spacing: .18em; text-transform: uppercase; color: var(--cyan, #48e5ff); }
+.md-h:first-child { margin-top: 0; }

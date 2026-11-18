@@ -16,6 +16,18 @@ Centro de comando **privado** da carteira INSA Dividend Army. É a sucessora do 
 | Peso do app | 412 KB de JS | 35 KB (12 KB comprimido) |
 | Hospedagem | Presa ao Manus | Sua conta Cloudflare (plano gratuito) |
 
+## Novidades da 2.8 · Manuel como Estrategista C-Level e o Plano de Guerra no motor
+
+- **Nova identidade do Manuel:** Estrategista Financeiro C-Level e Auditor de Risco. Fala direto, em linguagem de negócios, sem "Senhor", sem "Comandante" e sem clichês militares; exige dados reais antes de dar veredito.
+- **Parecer do Board:** toda avaliação de aporte, investimento ou projeto sai em 4 seções fixas: Resumo Executivo C-Level, Análise Quantitativa, Análise Qualitativa e O Veredito do Board (Aprovado / Reprovado / Necessita de Dados Operacionais). O motor local já responde assim sem gastar IA.
+- **Plano de Guerra no motor de compras** (`POLITICA_PADRAO`, sobreponível por `settings.politica`):
+  - só Fase 1 (WEGE3, BTLG11, NDIV11, ITUB4, CMIG4) até R$ 8.000 de patrimônio;
+  - BBAS3 e BITC11 congelados (sem aporte, sem venda);
+  - compra sempre o mais distante abaixo do peso-alvo, em pontos percentuais do patrimônio; empate técnico (≤0,5 pp) → BTLG11, depois CMIG4;
+  - se o caixa não paga 1 cota do 1º da fila, **acumula** (não desvia para um ativo mais barato);
+  - proventos 100% reinvestidos; nunca vende.
+- O cockpit mostra a fila e quanto falta quando o caixa está acumulando.
+
 ## Novidades da 2.7 · Manuel sente a carteira, responde ao toque e avisa sozinho
 
 - **2.7.4 · brilho no console:** no console do Manuel o rosto, a malha e os anéis dourados ficam mais contidos (o brilho somado estourava na tela menor); a tela cheia continua igual.

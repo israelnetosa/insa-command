@@ -55,6 +55,7 @@ export function paraFala(texto: string, max = 1500): string {
   t = t.replace(/```[\s\S]*?```/g, ' ')                       // blocos de código
     .replace(/\[(.+?)\]\((.+?)\)/g, '$1')                     // links
     .replace(/https?:\/\/\S+/g, '')
+    .replace(/^\s*#{1,4}\s*(.+?)\s*$/gm, '$1.')            // títulos de seção viram frase
     .replace(/[*_`#>~]/g, '')
     .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, '')   // emojis
     .replace(/^\s*(?:[-•]|\d+\.)\s+/gm, '');                  // marcadores de lista

@@ -32,19 +32,19 @@ const TICKER = /\b([a-z]{4}\d{1,2})\b/g;
 
 // Humor de J.A.R.V.I.S.: uma tirada curta no fim, nunca no lugar do dado. Varia por dia e pergunta, sem sorteio.
 const TIRADAS: Record<string, string[]> = {
-  leitura_alta: ['Um dia verde, Senhor. Aproveitemos antes que o mercado mude de ideia.', 'O mercado acordou de bom humor. Não vou perguntar o motivo.'],
-  leitura_baixa: ['Um dia vermelho, Senhor. Os dividendos, felizmente, não leem manchetes.', 'O mercado está dramático hoje. Nós seguimos o plano.'],
-  leitura: ['Tudo calmo no front, Senhor. Calmo demais, se me permite.', 'Sistemas nominais. O café fica por conta do Senhor.'],
-  simular_aporte: ['Distribuído com disciplina, Senhor. Nem um centavo para o ativo da moda.', 'Matemática fria, convicção quente.'],
-  zona: ['Pechinchas à vista, Senhor. Prometo não contar a ninguém.', 'O mercado está em promoção. Com moderação, como sempre.'],
-  magic_number: ['A bola de neve agradece cada cota, Senhor.', 'Cada cota a mais é um soldado que se paga sozinho.'],
-  projecao: ['Paciência e aportes, Senhor. Os juros compostos cuidam do resto, sem pedir aumento.', 'É projeção, não profecia. Mas gosto dos números.'],
-  proximos_passos: ['Um passo de cada vez, Senhor. De preferência, todo mês.', 'O plano é simples. O difícil é não inventar moda.'],
-  renda: ['Renda passiva: o único salário que não pede reunião às 9h.', 'Pequena hoje, Senhor. Os juros compostos têm senso de humor lento.'],
-  varrer_oportunidades: ['O mais atrasado primeiro, Senhor. Democracia de carteira.', 'Fila organizada. Ninguém fura.'],
-  focar_ativo: ['Dados na mesa, Senhor. A decisão é sua, como de costume.'],
-  propor_lancamento: ['Eu preparo, o Senhor assina. Divisão de trabalho clássica.'],
-  requer_ia: ['Para opiniões, preciso consultar meus colegas na nuvem. Eles cobram por palavra.'],
+  leitura_alta: ['Alta de um dia não muda a tese. Disciplina de aporte mantida.', 'Preço subiu; yield de entrada caiu. Nada a celebrar no fluxo de caixa.'],
+  leitura_baixa: ['Queda de preço melhora o yield de entrada. A regra de alocação não muda.', 'Volatilidade não é perda realizada. Sem vendas.'],
+  leitura: ['Sem eventos materiais. Execução segue o plano.', 'Carteira estável. Próxima decisão: o aporte.'],
+  // simular_aporte: sem tirada — o parecer do Board termina no veredito
+  zona: ['Preço abaixo do teto não é ordem de compra; a fila do alvo manda.', 'Margem de segurança registrada. Alocação continua pela regra.'],
+  magic_number: ['Cada cota reinvestida reduz o custo de capital do próximo aporte.'],
+  projecao: ['Projeção depende de premissas de DY e aporte; não é garantia.', 'Sensibilidade principal: constância do aporte.'],
+  proximos_passos: ['Execução mensal sem desvio vale mais que timing.'],
+  renda: ['Renda ainda é marginal frente ao patrimônio; o motor é o aporte.', 'DRIP integral até a meta. Nenhum provento consumido.'],
+  varrer_oportunidades: ['Fila por distância ao alvo; empate técnico favorece BTLG11, depois CMIG4.'],
+  focar_ativo: ['Dados na mesa. A decisão é sua.'],
+  propor_lancamento: ['Proposta pronta. Só grava com a sua confirmação.'],
+  requer_ia: ['Pergunta de análise: exige a IA (consome tokens).'],
 };
 function comTirada(resposta: string, chave: string, t: string, agora: Date) {
   const lista = TIRADAS[chave]; if (!lista?.length) return resposta;
@@ -71,27 +71,20 @@ export async function responderLocal(texto: string, tk: Toolkit, agora = new Dat
   if (lanc) return ok(lanc.texto, 'propor_lancamento', [lanc.id]);
   if (/\b(comprei|vendi|recebi|aportei|depositei|transferi)\b/.test(t)) {
     if (!estrito) return null;   // não entendi os números: a IA interpreta
-    return ok(['Senhor, não consegui ler os números desse lançamento. Formatos que entendo sem IA:',
+    return ok(['Não consegui ler os números desse lançamento. Formatos que entendo sem IA:',
       '- comprei 3 BTLG11 a 97,80 (opcional: com custos de 0,50)', '- vendi 2 ITUB4 a 40', '- recebi R$ 12,35 do MXRF11 ontem', '- aportei 500',
       'Ou use o Registrar, ou envie "ia: <sua frase>" para a IA interpretar (gasta tokens).'].join('\n'), 'ajuda_lancamento');
   }
 
   if (PEDE_IA.test(t)) {
     if (!estrito) return null;
-    return ok(['Senhor, essa pergunta pede pesquisa ou opinião, e isso só a IA faz (gasta tokens).',
+    return ok(['Essa pergunta pede pesquisa ou opinião, e isso só a IA faz (gasta tokens).',
       `Para acionar, envie: ia: ${texto.trim().slice(0, 120)}`,
       'Sem IA eu respondo: leitura do dia, próximos passos, onde aplicar R$ X, zona de ataque, Magic Number, marcos, renda e um ativo (ex.: "e o BTLG11?").'].join('\n'), 'requer_ia');
   }
   const s = await tk.state();
   const posicoes: any[] = s.posicoes || [];
   const fase = (s.fases || []).find((f: any) => f.id === s.missao?.fase?.id);
-  const filaFase = () => {
-    const total = s.totais.investido + s.totais.caixa;
-    return Object.entries(fase?.pesos ?? {}).map(([tk2, w]: any) => {
-      const p = posicoes.find(x => x.ticker === tk2);
-      return { ticker: tk2, alvo: w, peso: p?.peso ?? 0, atraso: (w / 100) * total - (p?.valor ?? 0), zona: p?.zona ?? 'fora da carteira', var: p?.var_dia ?? null };
-    }).sort((a, b) => b.atraso - a.atraso);
-  };
 
   // Próximos passos rumo a um alvo de renda ("o que fazer para chegar a 25/mês?", "analisar a carteira")
   const passos = async (cabecalho?: string) => {
@@ -104,14 +97,14 @@ export async function responderLocal(texto: string, tk: Toolkit, agora = new Dat
     const sim = await tk.simular(aporte);
     const add = Number(sim.renda_mensal_adicional_estimada) || 0;
     const compras = (sim.compras || []).map((c: any) => `${c.qtd} ${c.ticker}`).join(' + ');
-    const fila = filaFase().slice(0, 3);
+    const fila: any[] = (s.plano?.fila ?? []).slice(0, 3);
     return [
       cabecalho ?? '',
-      `Senhor, renda hoje ${brl(ref)}/mês; alvo ${brl(alvo)}/mês${falta ? `: faltam ${brl(falta)}/mês.` : ': alvo já alcançado.'}`,
+      `Renda hoje ${brl(ref)}/mês; alvo ${brl(alvo)}/mês${falta ? `: faltam ${brl(falta)}/mês.` : ': alvo já alcançado.'}`,
       `Próximo aporte (${brl(aporte)} + caixa ${brl(s.totais.caixa)}): ${compras || 'nenhuma cota inteira cabe'}${add ? ` → +${brl(add)}/mês` : ''}.`,
       falta && add ? (add >= falta ? 'Esse aporte sozinho fecha o alvo.' : `No ritmo atual, ~${Math.ceil(falta / add)} aporte(s) até o alvo (os proventos reinvestidos aceleram).`) : '',
-      fila.length ? `Fila da ${fase?.nome ?? 'fase'}: ${fila.map((f, i) => `${i + 1}. ${f.ticker} (peso ${num(f.peso)}%/alvo ${num(f.alvo)}%, faltam ${brl(Math.max(0, f.atraso))}, ${f.zona})`).join(' · ')}.` : '',
-      `${mi.em_ataque} pelotão(ões) em zona de ataque · Magic Number: próximo ${s.magic?.proximo ?? '—'}.`,
+      fila.length ? `Fila da ${fase?.nome ?? 'fase'}: ${fila.map((f: any, i: number) => `${i + 1}. ${f.ticker} (peso ${num(f.peso)}%/alvo ${num(f.alvo)}%, distância ${num(f.distancia_pp)} pp, faltam ${brl(f.falta)})`).join(' · ')}.` : '',
+      `${mi.em_ataque} ativo(s) em zona de ataque · Magic Number: próximo ${s.magic?.proximo ?? '—'}.`,
     ].filter(Boolean).join('\n');
   };
   if (/(proximos? passos?|analis|alcanc|chegar (a|em|nos?|aos?)|bater (a|o|os)|o que (fazer|faco|fazemos)|plano de acao|como (chego|chegar|acelero|acelerar))/.test(t))
@@ -122,23 +115,16 @@ export async function responderLocal(texto: string, tk: Toolkit, agora = new Dat
   const ehProjecao = /(marco|meta|projec|quanto tempo|quando (vou|chego|atinj|alcan|bato|chegarei))/.test(t);
   if (!ehProjecao && ((valor != null && /(aplic|invest|aport|coloc|compr|distribu|aloc|gastar|usar)/.test(t)) ||
       /(onde aplic|onde invist|plano de compra|o que compr|onde compr|onde coloc|caixa parado|soldado ocioso)/.test(t))) {
-    const v = valor ?? 0;
-    const r = await tk.simular(v);
-    const linhas = (r.compras || []).map((c: any) => `- ${c.ticker}: ${c.qtd} cota${c.qtd > 1 ? 's' : ''} × ${brl(c.preco)} = ${brl(c.valor)}`);
-    return ok([
-      `Senhor, com ${brl(r.disponivel)} disponíveis (${v ? `aporte de ${brl(v)} + ` : ''}caixa de ${brl(r.caixa_atual)}), na fase ${r.fase ?? '—'}:`,
-      linhas.length ? linhas.join('\n') : '- Nenhuma cota inteira cabe nesse valor agora.',
-      `Sobra: ${brl(r.sobra)}. Renda adicional estimada: ${brl(r.renda_mensal_adicional_estimada)}/mês.`,
-      'Regra: ativo mais atrasado contra o peso-alvo, cotas inteiras, sem vendas. Cotações com até ~15 min de atraso.',
-    ].join('\n'), 'simular_aporte');
+    return ok(parecerBoard(s, await tk.simular(valor ?? 0), valor ?? 0), 'simular_aporte');
   }
 
   // 3. Oportunidades / mais atrasados
   if (/(oportunidad|varr|atrasad|prioridad|o que esta para tras|fila de compra)/.test(t)) {
-    const fila = filaFase().slice(0, 6);
-    if (!fila.length) return ok('Senhor, a fase atual não tem pesos-alvo cadastrados. Veja a aba Estratégia.', 'varrer_oportunidades');
-    return ok([`Senhor, fila da fase ${fase?.nome ?? '—'} (mais atrasado primeiro):`,
-      ...fila.map((f, i) => `${i + 1}. ${f.ticker}: peso ${num(f.peso)}% / alvo ${num(f.alvo)}% · faltam ${brl(Math.max(0, f.atraso))} · zona ${f.zona}${f.var != null ? ` · dia ${pct(f.var)}` : ''}`),
+    const fila: any[] = s.plano?.fila ?? [];
+    if (!fila.length) return ok('Nenhum ativo elegível abaixo do peso-alvo na fase atual.', 'varrer_oportunidades');
+    return ok([`Fila de alocação (${fase?.nome ?? '—'}, regra do Board):`,
+      ...fila.map((f: any, i: number) => { const p = posicoes.find(x => x.ticker === f.ticker); return `${i + 1}. ${f.ticker}: peso ${num(f.peso)}% / alvo ${num(f.alvo)}% · distância ${num(f.distancia_pp)} pp · faltam ${brl(f.falta)} · cota ${brl(f.preco)}${p?.zona ? ` · zona ${p.zona}` : ''}`; }),
+      `Congelados (sem aporte, sem venda): ${(s.politica?.congelados ?? []).join(', ')}.`,
     ].join('\n'), 'varrer_oportunidades');
   }
 
@@ -149,7 +135,7 @@ export async function responderLocal(texto: string, tk: Toolkit, agora = new Dat
     const esp = posicoes.filter(p => p.zona === 'espera');
     const fmt = (p: any) => `${p.ticker} ${brl(p.preco)} (PM ${brl(p.preco_medio)}${p.teto_bazin ? `, teto ${brl(p.teto_bazin)}` : ''})`;
     return ok([
-      at.length ? `Senhor, em zona de ataque: ${at.map(fmt).join('; ')}.` : 'Senhor, nenhum pelotão em zona de ataque agora.',
+      at.length ? `Em zona de ataque: ${at.map(fmt).join('; ')}.` : 'Nenhum ativo em zona de ataque agora.',
       neu.length ? `Neutros (abaixo do teto): ${neu.map(p => p.ticker).join(', ')}.` : '',
       esp.length ? `Em espera (acima do teto): ${esp.map(p => p.ticker).join(', ')}.` : '',
       'Zona de ataque = abaixo do teto Bazin e perto do preço médio ou na metade inferior das 52 semanas.',
@@ -161,7 +147,7 @@ export async function responderLocal(texto: string, tk: Toolkit, agora = new Dat
     const m = s.magic || {};
     const lista = posicoes.filter(p => p.magic).sort((a, b) => a.magic.custo_faltante - b.magic.custo_faltante);
     return ok([
-      `Senhor, Magic Number ativo em ${m.ativos?.length ? m.ativos.join(', ') : 'nenhum pelotão ainda'}. Próximo a ativar: ${m.proximo ?? '—'}.`,
+      `Magic Number ativo em ${m.ativos?.length ? m.ativos.join(', ') : 'nenhum ativo ainda'}. Próximo a ativar: ${m.proximo ?? '—'}.`,
       ...lista.slice(0, 6).map(p => `- ${p.ticker}: ${p.qtd}/${p.magic.magic} cotas (${num(p.magic.progresso)}%)${p.magic.ativo ? ' · ATIVO' : ` · faltam ${p.magic.faltam} = ${brl(p.magic.custo_faltante)}`}`),
       `Para ativar todos: ${brl(m.custo_total)}. Hoje os proventos compram ${num(m.cotas_por_mes)} cota/mês sozinhos.`,
       m.sem_provento?.length ? `Sem provento cadastrado: ${m.sem_provento.join(', ')}.` : '',
@@ -174,7 +160,7 @@ export async function responderLocal(texto: string, tk: Toolkit, agora = new Dat
     const prox = base.find((x: any) => x.renda >= mi.proximo_marco) ?? base[0];
     const quando = (m: number | null) => m == null ? 'além de 60 anos' : m < 12 ? `${m} meses` : `${(m / 12).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} anos`;
     return ok([
-      `Senhor, renda de referência ${brl(s.totais.renda_referencia)}/mês. Próximo marco: ${brl(mi.proximo_marco)}/mês (${num(mi.progresso_marco)}%, faltam ${brl(mi.falta_marco)}).`,
+      `Renda de referência ${brl(s.totais.renda_referencia)}/mês. Próximo marco: ${brl(mi.proximo_marco)}/mês (${num(mi.progresso_marco)}%, faltam ${brl(mi.falta_marco)}).`,
       prox ? `No cenário base (DY 7,1%, aporte ${brl(s.aporte_mensal)}/mês, reinvestindo): marco em ~${quando(prox.meses)}.` : '',
       base.length ? `Marcos no cenário base: ${base.map((x: any) => `${brl(x.renda)} em ${quando(x.meses)}`).join(' · ')}.` : '',
       `Meta final: ${brl(mi.meta_mensal)}/mês (${num(mi.progresso_meta)}%). É projeção, não promessa.`,
@@ -186,7 +172,7 @@ export async function responderLocal(texto: string, tk: Toolkit, agora = new Dat
     const top = [...posicoes].sort((a, b) => b.renda_mes_estimada - a.renda_mes_estimada).slice(0, 5);
     const mes = (s.calendario || [])[new Date(agora.getTime() - 3 * 3600_000).getUTCMonth()];
     return ok([
-      `Senhor, renda estimada ${brl(s.totais.renda_mes_estimada)}/mês (DY da carteira ${num(s.totais.dy_carteira)}%). Recebido nos últimos 12 meses: ${brl(s.totais.renda_12m_recebida)}.`,
+      `Renda estimada ${brl(s.totais.renda_mes_estimada)}/mês (DY da carteira ${num(s.totais.dy_carteira)}%). Recebido nos últimos 12 meses: ${brl(s.totais.renda_12m_recebida)}.`,
       mes ? `Este mês (${mes.mes}): recebido ${brl(mes.recebido)}, estimado ${brl(mes.estimado)}.` : '',
       `Maiores pagadores: ${top.map(p => `${p.ticker} ${brl(p.renda_mes_estimada)}`).join(' · ')}.`,
       'Datas-com e anúncios novos: pergunte "ia: proventos anunciados de <ticker>" para eu pesquisar.',
@@ -200,10 +186,10 @@ export async function responderLocal(texto: string, tk: Toolkit, agora = new Dat
     const p = posicoes.find(x => x.ticker === tic);
     const q = await tk.cotacao(tic).catch(() => null);
     const alvo = fase?.pesos?.[tic] ?? 0;
-    if (!p && !q) return estrito ? ok(`Senhor, não encontrei ${tic} na carteira nem cotação. Para pesquisar, envie: ia: ${texto.trim().slice(0, 100)}`, 'focar_ativo') : null;
-    if (!p) return ok(`Senhor, ${tic} não está na carteira. Cotação: ${brl(q.preco)} (${pct(q.variacao)} no dia, ${q.fonte}). Alvo na fase: ${num(alvo)}%.`, 'focar_ativo');
+    if (!p && !q) return estrito ? ok(`Não encontrei ${tic} na carteira nem cotação. Para pesquisar, envie: ia: ${texto.trim().slice(0, 100)}`, 'focar_ativo') : null;
+    if (!p) return ok(`${tic} não está na carteira. Cotação: ${brl(q.preco)} (${pct(q.variacao)} no dia, ${q.fonte}). Alvo na fase: ${num(alvo)}%.`, 'focar_ativo');
     return ok([
-      `Senhor, ${tic}: ${num(p.qtd)} cotas · PM ${brl(p.preco_medio)}${p.pm_estimado ? ' (estimado)' : ''} · preço ${brl(q?.preco ?? p.preco)} (${pct(q?.variacao ?? p.var_dia)} no dia).`,
+      `${tic}: ${num(p.qtd)} cotas · PM ${brl(p.preco_medio)}${p.pm_estimado ? ' (estimado)' : ''} · preço ${brl(q?.preco ?? p.preco)} (${pct(q?.variacao ?? p.var_dia)} no dia).`,
       `Valor ${brl(p.valor)} · resultado ${brl(p.resultado)} (${pct(p.resultado_pct)}) · peso ${num(p.peso)}% / alvo ${num(alvo)}% · zona ${p.zona}${p.teto_bazin ? ` · teto ${brl(p.teto_bazin)}` : ''}.`,
       `Renda ${brl(p.renda_mes_estimada)}/mês (YoC ${num(p.yoc)}%).${p.magic ? ` Magic Number ${p.qtd}/${p.magic.magic}${p.magic.ativo ? ' · ATIVO' : ` · faltam ${p.magic.faltam} (${brl(p.magic.custo_faltante)})`}.` : ''}`,
     ].join('\n'), 'focar_ativo');
@@ -215,11 +201,11 @@ export async function responderLocal(texto: string, tk: Toolkit, agora = new Dat
     const mov = posicoes.filter(p => p.var_dia != null).sort((a, b) => b.var_dia - a.var_dia);
     const alta = mov[0], baixa = mov[mov.length - 1];
     return ok([
-      `Senhor, leitura ${s.em_pregao ? 'com o pregão aberto' : 'com o pregão fechado'}:`,
+      `Leitura ${s.em_pregao ? 'com o pregão aberto' : 'com o pregão fechado'}:`,
       `- Patrimônio ${brl(tot.patrimonio)} (ativos ${brl(tot.investido)}, caixa ${brl(tot.caixa)}). Dia: ${tot.resultado_dia >= 0 ? '+' : ''}${brl(tot.resultado_dia)}.`,
       `- Renda estimada ${brl(tot.renda_mes_estimada)}/mês · próximo marco ${brl(s.missao.proximo_marco)} (${num(s.missao.progresso_marco)}%).`,
       alta && baixa && alta !== baixa ? `- Destaques: ${alta.ticker} ${pct(alta.var_dia)}, ${baixa.ticker} ${pct(baixa.var_dia)}.` : '',
-      `- ${s.missao.em_ataque} pelotão(ões) em zona de ataque. Magic Number: próximo ${s.magic?.proximo ?? '—'}.`,
+      `- ${s.missao.em_ataque} ativo(s) em zona de ataque. Magic Number: próximo ${s.magic?.proximo ?? '—'}.`,
       (s.alertas || []).length ? `- Alertas: ${(s.alertas || []).slice(0, 3).map((a: any) => a.texto).join(' ')}` : '',
     ].filter(Boolean).join('\n'), tot.resultado_dia > 0.5 ? 'leitura_alta' : tot.resultado_dia < -0.5 ? 'leitura_baixa' : 'leitura');
   }
@@ -253,9 +239,55 @@ async function lancamento(t: string, tk: Toolkit, agora: Date, original: string)
     : L.tipo === 'provento' ? `provento (${L.subtipo}) de ${brl(L.valor)} de ${L.ticker}`
     : `${L.tipo} de ${L.qtd} ${L.ticker} a ${brl(L.preco)}${L.custos ? ` + custos ${brl(L.custos)}` : ''}`;
   return { id: p.id, texto: [
-    `Senhor, preparei a proposta: ${desc}, em ${L.data.split('-').reverse().join('/')}.`,
+    `Preparei a proposta: ${desc}, em ${L.data.split('-').reverse().join('/')}.`,
     `Caixa: ${brl(e.caixa.antes)} → ${brl(e.caixa.depois)}.${e.posicao ? ` ${e.posicao.ticker}: ${num(e.posicao.qtd.antes)} → ${num(e.posicao.qtd.depois)} cotas, PM ${brl(e.posicao.preco_medio.antes)} → ${brl(e.posicao.preco_medio.depois)}.` : ''}`,
     ...(e.avisos || []).map((a: string) => `Aviso: ${a}`),
     'Nada foi gravado. Clique em "Confirmar" para lançar no razão.',
   ].join('\n') };
+}
+
+
+/** Parecer no formato do Board: Resumo Executivo, Quantitativa, Qualitativa, Veredito. */
+export function parecerBoard(s: any, r: any, aporte: number): string {
+  const tot = s.totais ?? {}, pos: any[] = s.posicoes ?? [], pol = s.politica ?? {};
+  const pat = Number(tot.patrimonio) || 0, novoPat = pat + aporte;
+  const compras: any[] = r.compras ?? [], fila: any[] = r.fila ?? [], ac = r.acumulando;
+  const investidoAgora = compras.reduce((x, c) => x + c.valor, 0);
+  const rendaAdd = Number(r.renda_mensal_adicional_estimada) || 0;
+  const yieldCompra = investidoAgora ? (rendaAdd * 12) / investidoAgora * 100 : 0;
+  const rendaNova = (Number(tot.renda_mes_estimada) || 0) + rendaAdd;
+  const alvo1 = fila[0];
+  const posDe = (t: string) => pos.find(p => p.ticker === t);
+  const foraPlano = pos.filter(p => !(pol.fase1 ?? []).includes(p.ticker));
+  const pesoFora = foraPlano.reduce((x, p) => x + (p.peso || 0), 0);
+  const maior = s.missao?.maior_posicao;
+  const semAporte = !aporte && !compras.length;
+
+  const resumo = compras.length
+    ? `Executar ${compras.map(c => `${c.qtd} ${c.ticker}`).join(' + ')} (${brl(investidoAgora)}). Caixa remanescente ${brl(r.sobra)}${ac ? `, acumulando para ${ac.ticker} (faltam ${brl(ac.falta)} para 1 cota)` : ''}. Sem vendas, liquidez preservada.`
+    : ac ? `Caixa de ${brl(r.disponivel)} não paga 1 cota de ${ac.ticker} (${brl(ac.preco)}), o ativo mais distante do alvo. Acumular: faltam ${brl(ac.falta)}. Nenhuma compra fora da fila.`
+    : `Nenhum ativo elegível abaixo do peso-alvo. Capital fica em caixa.`;
+
+  const quant = [
+    `- Disponível: ${brl(r.disponivel)} = caixa ${brl(r.caixa_atual)}${aporte ? ` + aporte ${brl(aporte)}` : ''}. Patrimônio ${brl(pat)} → ${brl(novoPat)}.`,
+    ...compras.map(c => { const p = posDe(c.ticker); const pesoDepois = ((p?.valor ?? 0) + c.valor) / (novoPat || 1) * 100; return `- ${c.ticker}: ${c.qtd} × ${brl(c.preco)} = ${brl(c.valor)} · peso ${num(p?.peso ?? 0)}% → ${num(pesoDepois)}%`; }),
+    compras.length ? `- Renda adicional ${brl(rendaAdd)}/mês (yield da compra ${num(yieldCompra)}% a.a.). Renda estimada ${brl(tot.renda_mes_estimada)} → ${brl(rendaNova)}/mês.` : '',
+    `- Sobra ${brl(r.sobra)}${ac ? ` · próxima cota-alvo ${ac.ticker} ${brl(ac.preco)}` : ''}.`,
+    fila.length ? `- Fila (distância ao alvo, pp do patrimônio): ${fila.slice(0, 4).map((f: any) => `${f.ticker} ${num(f.distancia_pp)}`).join(' · ')}.` : '',
+  ].filter(Boolean);
+
+  const qual = [
+    alvo1 && posDe(alvo1.ticker)?.zona === 'espera' ? `- ${alvo1.ticker} está acima do teto Bazin (zona espera): yield de entrada baixo. A regra é matemática e prevalece, mas a compra eleva peso, não renda.` : '',
+    maior && maior.peso > (maior.teto ?? 25) * 0.75 ? `- Concentração: ${maior.ticker} com ${num(maior.peso)}% (teto ${num(maior.teto)}%). Não recebe aporte enquanto estiver acima do alvo.` : '',
+    pesoFora > 0 ? `- ${num(pesoFora)}% do patrimônio está fora da Fase 1 (${foraPlano.map(p => p.ticker).join(', ')}): não recebe aporte e dilui com o tempo. BBAS3 e BITC11 congelados.` : '',
+    `- Proventos 100% reinvestidos (DRIP). Ordem limitada em ativos de baixa liquidez (BTLG11, NDIV11). Cotações com até ~15 min de atraso.`,
+    novoPat <= (pol.liberar_fases_acima ?? 8000) ? `- Fase 1 travada até ${brl(pol.liberar_fases_acima ?? 8000)} de patrimônio: nenhum ativo de outra fase é sugerido.` : '',
+  ].filter(Boolean);
+
+  const veredito = semAporte && ac
+    ? `**Necessita de Dados Operacionais.** Responda: 1) Qual o valor do aporte deste mês? 2) Há proventos a receber nos próximos 30 dias que não estão no razão?`
+    : compras.length ? `**Aprovado.** Executar ${compras.map(c => `${c.qtd} ${c.ticker}`).join(' + ')} com ordem limitada${ac ? `; manter ${brl(r.sobra)} em caixa para ${ac.ticker}` : ''}. Registrar após a execução.`
+    : `**Aprovado: acumular.** Manter ${brl(r.sobra)} em caixa até completar 1 cota de ${ac?.ticker ?? 'o primeiro da fila'}.`;
+
+  return ['## Resumo Executivo C-Level', resumo, '## Análise Quantitativa', ...quant, '## Análise Qualitativa', ...qual, '## O Veredito do Board', veredito].join('\n');
 }

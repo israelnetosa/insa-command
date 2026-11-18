@@ -17,7 +17,7 @@ function tk() {
     magic: { ativos: ['MXRF11'], proximo: 'AAAA11', custo_total: 11500, cotas_por_mes: 1.48, sem_provento: [] },
     projecao: { marcos: { base: [{ renda: 25, meses: 7 }, { renda: 100, meses: 40 }] } },
     calendario: Array.from({ length: 12 }, (_, i) => ({ mes: 'm' + i, recebido: 1, estimado: 2 })),
-    alertas: [{ texto: 'R$ 300,00 em caixa: soldado ocioso.' }], em_pregao: true, aporte_mensal: 500, regras: ['Comprar o mais atrasado.'], estrategia: null,
+    alertas: [{ texto: 'R$ 300,00 em caixa: caixa parado.' }], em_pregao: true, aporte_mensal: 500, politica: { fase1: ['AAAA11'], congelados: ['BBAS3'], liberar_fases_acima: 8000 }, plano: { compras: [], sobra: 300, fila: [{ ticker: 'AAAA11', alvo: 50, peso: 20, distancia_pp: 30, falta: 690, preco: 100 }] }, regras: ['Comprar o mais atrasado.'], estrategia: null,
   };
   const t: Toolkit = {
     state: async () => st,
@@ -46,9 +46,9 @@ test('onde aplicar um aporte: simula sem IA e sem tokens', async () => {
   assert.equal(r!.provedor, 'Local');
   assert.deepEqual(r!.uso, { entrada: 0, saida: 0 });
   assert.deepEqual(simulados, [1500]);
-  assert.match(r!.texto, /AAAA11: 8 cotas/);
+  assert.match(r!.texto, /## Resumo Executivo C-Level[\s\S]*AAAA11: 8 × R\$ 100,00[\s\S]*## O Veredito do Board\n\*\*Aprovado/);
   const r2 = await responderLocal('onde aplicar?', t, agora);
-  assert.match(r2!.texto, /caixa de R\$ 300,00/);
+  assert.match(r2!.texto, /caixa R\$ 300,00/);
 });
 
 test('intenções do dia a dia respondem localmente', async () => {
@@ -61,7 +61,7 @@ test('intenções do dia a dia respondem localmente', async () => {
     ['Renda do mês', /Maiores pagadores: MXRF11/],
     ['Varra as oportunidades da fase', /1\. AAAA11/],
     ['e o AAAA11?', /AAAA11: 10 cotas/],
-    ['bom dia', /leitura com o pregão aberto/],
+    ['bom dia', /Leitura com o pregão aberto/],
   ];
   for (const [q, re] of casos) {
     const r = await responderLocal(q, t, agora);

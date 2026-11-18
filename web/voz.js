@@ -184,7 +184,7 @@ const temNumero = (t) => /\d/.test(t);
 export function interpretar(falado, ctx = {}) {
   const { texto, chamou } = tirarChamada(falado);
   const t = sem(texto);
-  if (!t) return chamou ? { tipo: 'perguntar', fala: 'Às suas ordens, Comandante.', aguardar: null } : { tipo: 'nada' };
+  if (!t) return chamou ? { tipo: 'perguntar', fala: 'Pode falar.', aguardar: null } : { tipo: 'nada' };
   if (/^(para|pare|silencio|chega|cala|basta)\b/.test(t)) return { tipo: 'parar' };
   if (ctx.pendente) {
     if (/^(confirmo|confirma|confirmar|pode gravar|grava|gravar|sim,? confirmo|positivo|afirmativo)\b/.test(t)) return { tipo: 'confirmar' };
@@ -192,7 +192,7 @@ export function interpretar(falado, ctx = {}) {
   }
   const comNum = numerosPorExtenso(texto);
   if (ctx.aguardando) {
-    if (/^(cancela|esquece|deixa|nada)\b/.test(t)) return { tipo: 'perguntar', fala: 'Cancelado, Comandante.', aguardar: null };
+    if (/^(cancela|esquece|deixa|nada)\b/.test(t)) return { tipo: 'perguntar', fala: 'Cancelado.', aguardar: null };
     if (temNumero(comNum)) {
       const verbo = { aporte: 'aportei', retirada: 'retirei', compra: 'comprei', venda: 'vendi', provento: 'recebi' }[ctx.aguardando];
       return { tipo: 'enviar', texto: `${verbo} ${comNum}` };
@@ -200,9 +200,9 @@ export function interpretar(falado, ctx = {}) {
   }
   const quer = /(registr|lanc|anot|vamos|quero|fazer|fiz|faca|marca)/.test(t);
   if (quer && !temNumero(comNum)) {
-    if (/aport|deposit/.test(t)) return { tipo: 'perguntar', fala: 'Certo, Comandante. De quanto foi o aporte?', aguardar: 'aporte' };
+    if (/aport|deposit/.test(t)) return { tipo: 'perguntar', fala: 'De quanto foi o aporte?', aguardar: 'aporte' };
     if (/retirad|saque|saquei|retirei/.test(t)) return { tipo: 'perguntar', fala: 'Entendido. De quanto foi a retirada?', aguardar: 'retirada' };
-    if (/compr/.test(t)) return { tipo: 'perguntar', fala: 'Qual ativo, quantas cotas e a que preço, Comandante?', aguardar: 'compra' };
+    if (/compr/.test(t)) return { tipo: 'perguntar', fala: 'Qual ativo, quantas cotas e a que preço?', aguardar: 'compra' };
     if (/vend/.test(t)) return { tipo: 'perguntar', fala: 'Qual ativo, quantas cotas e a que preço?', aguardar: 'venda' };
     if (/provent|dividend|rendiment|jcp/.test(t)) return { tipo: 'perguntar', fala: 'De qual ativo e qual o valor recebido?', aguardar: 'provento' };
   }

@@ -154,37 +154,68 @@ export function zona(preco: number, pm: number, a?: Asset): Zona {
   return 'neutra';
 }
 
-export function faseAtual(patrimonio: number, fases: Fase[]): Fase | undefined {
-  return fases.find(f => f.ate == null || patrimonio < f.ate) ?? fases[fases.length - 1];
+/** Plano de Guerra: regras de alocação do Board (podem ser sobrepostas por settings.politica). */
+export interface Politica {
+  fase1: string[];              // únicos elegíveis enquanto o patrimônio não passar de liberar_fases_acima
+  liberar_fases_acima: number;  // R$: só acima disto ativos de outras fases entram na fila
+  congelados: string[];         // não recebem aporte e não são vendidos
+  desempate: string[];          // prioridade em empate técnico
+  empate_pp: number;            // diferença (pontos percentuais) que conta como empate técnico
+}
+export const POLITICA_PADRAO: Politica = {
+  fase1: ['WEGE3', 'BTLG11', 'NDIV11', 'ITUB4', 'CMIG4'],
+  liberar_fases_acima: 8000,
+  congelados: ['BBAS3', 'BITC11'],
+  desempate: ['BTLG11', 'CMIG4'],
+  empate_pp: 0.5,
+};
+
+export function faseAtual(patrimonio: number, fases: Fase[], pol: Politica = POLITICA_PADRAO): Fase | undefined {
+  // a Fase 1 vale até o limite do Board, mesmo que a fase cadastrada vá além
+  return fases.find((f, i) => { const ate = i === 0 && f.ate != null ? Math.min(f.ate, pol.liberar_fases_acima) : f.ate; return ate == null || patrimonio <= ate; }) ?? fases[fases.length - 1];
 }
 
-/** Sugestão de compra: aloca o caixa em cotas inteiras, sempre no ativo mais atrasado contra o peso-alvo. Nunca vende. */
+export interface LinhaFila { ticker: string; alvo: number; peso: number; distancia_pp: number; falta: number; preco: number }
+
+/** Fila de compra: elegíveis ordenados pela distância abaixo do peso-alvo (pp do patrimônio), com o desempate do Board. */
+export function filaAlocacao(valor: Record<string, number>, total: number, fase: Fase | undefined, precos: Record<string, number>, patrimonio: number, pol: Politica = POLITICA_PADRAO): LinhaFila[] {
+  if (!fase || total <= 0) return [];
+  const restritoFase1 = patrimonio <= pol.liberar_fases_acima;
+  const prio = (t: string) => { const i = pol.desempate.indexOf(t); return i < 0 ? 99 : i; };
+  const linhas = Object.entries(fase.pesos)
+    .filter(([t]) => !pol.congelados.includes(t) && (!restritoFase1 || pol.fase1.includes(t)) && precos[t] > 0)
+    .map(([t, alvo]) => {
+      const peso = ((valor[t] ?? 0) / total) * 100;
+      return { ticker: t, alvo, peso: r2(peso), distancia_pp: r2(alvo - peso), falta: r2((alvo / 100) * total - (valor[t] ?? 0)), preco: precos[t] };
+    })
+    .filter(l => l.distancia_pp > 0);
+  return linhas.sort((a, b) => Math.abs(a.distancia_pp - b.distancia_pp) <= pol.empate_pp ? (prio(a.ticker) - prio(b.ticker)) || (b.distancia_pp - a.distancia_pp) : b.distancia_pp - a.distancia_pp);
+}
+
+/** Sugestão de compra: cotas inteiras SEMPRE no 1º da fila. Se o caixa não paga 1 cota dele, acumula (não desvia para outro). Nunca vende. */
 export function planoCompras(
   posicoes: { ticker: string; valor: number; preco: number }[],
-  caixa: number, fase: Fase | undefined, precos: Record<string, number>,
+  caixa: number, fase: Fase | undefined, precos: Record<string, number>, pol: Politica = POLITICA_PADRAO,
 ) {
-  if (!fase || caixa <= 0) return { compras: [], sobra: r2(Math.max(caixa, 0)) };
   const valor: Record<string, number> = {};
   for (const p of posicoes) valor[p.ticker] = p.valor;
-  const alvos = Object.entries(fase.pesos).filter(([t]) => precos[t] > 0);
-  const somaPesos = alvos.reduce((s, [, w]) => s + w, 0) || 1;
+  const investido = Object.values(valor).reduce((s, v) => s + v, 0);
+  const patrimonio = investido + Math.max(caixa, 0);
+  const filaInicial = filaAlocacao(valor, patrimonio, fase, precos, patrimonio, pol);
+  if (!fase || caixa <= 0) return { compras: [], sobra: r2(Math.max(caixa, 0)), fila: filaInicial, acumulando: null as null | { ticker: string; preco: number; falta: number } };
   const compras: Record<string, number> = {};
-  let sobra = caixa;
+  let sobra = caixa, acumulando: null | { ticker: string; preco: number; falta: number } = null;
   for (let guard = 0; guard < 500; guard++) {
-    const total = Object.values(valor).reduce((s, v) => s + v, 0) + sobra;
-    const candidatos = alvos
-      .map(([t, w]) => ({ t, gap: (w / somaPesos) * total - (valor[t] ?? 0), preco: precos[t] }))
-      .filter(c => c.preco <= sobra && c.gap > 0)
-      .sort((a, b) => b.gap - a.gap);
-    const c = candidatos[0];
+    const c = filaAlocacao(valor, investido + caixa, fase, precos, patrimonio, pol)[0];
     if (!c) break;
-    compras[c.t] = (compras[c.t] ?? 0) + 1;
-    valor[c.t] = (valor[c.t] ?? 0) + c.preco;
+    if (c.preco > sobra + 1e-9) { acumulando = { ticker: c.ticker, preco: c.preco, falta: r2(c.preco - sobra) }; break; }
+    compras[c.ticker] = (compras[c.ticker] ?? 0) + 1;
+    valor[c.ticker] = (valor[c.ticker] ?? 0) + c.preco;
     sobra -= c.preco;
   }
   return {
     compras: Object.entries(compras).map(([ticker, qtd]) => ({ ticker, qtd, preco: precos[ticker], valor: r2(qtd * precos[ticker]) })),
-    sobra: r2(sobra),
+    sobra: r2(sobra), fila: filaInicial, acumulando,
   };
 }
 
@@ -215,7 +246,7 @@ export function projecao(patrimonio: number, aporte: number, marcos: number[]) {
 /** Estado completo do cockpit. */
 export function buildState(input: {
   movements: Movement[]; assets: Asset[]; quotes: Quote[];
-  fases: Fase[]; missao: Missao; aporte_mensal: number;
+  fases: Fase[]; missao: Missao; aporte_mensal: number; politica?: Partial<Politica>;
   calendario_estimado?: Record<string, number[]>; agora?: Date;
 }) {
   const agora = input.agora ?? new Date();
@@ -272,7 +303,8 @@ export function buildState(input: {
   const rendaRef = recebida12 > 0 && proventos.some(p => p.data <= corte) ? recebida12 / 12 : rendaEstMes;
   const proxMarco = input.missao.marcos.find(m => m > rendaRef) ?? input.missao.meta_mensal;
   const maior = linhas[0];
-  const fase = faseAtual(patrimonio, input.fases);
+  const pol: Politica = { ...POLITICA_PADRAO, ...(input.politica ?? {}) };
+  const fase = faseAtual(patrimonio, input.fases, pol);
   const precos: Record<string, number> = {};
   for (const [t, q] of Q) precos[t] = q.preco;
   for (const l of linhas) precos[l.ticker] ??= l.preco;
@@ -286,7 +318,7 @@ export function buildState(input: {
     ? 'Nenhuma cotação disponível ainda: valores calculados pelo preço médio.'
     : `Sem cotação para ${semCot.join(', ')}: valor pelo preço médio.` });
   if (maior && maior.peso > input.missao.teto_concentracao) alertas.push({ nivel: 'atencao', texto: `${maior.ticker} pesa ${maior.peso.toLocaleString('pt-BR')}% — acima do teto de ${input.missao.teto_concentracao}%.` });
-  if (caixa > 0 && caixa >= Math.min(...linhas.map(l => l.preco).filter(Boolean), Infinity)) alertas.push({ nivel: 'info', texto: `${brl(caixa)} em caixa: soldado ocioso. Veja o plano de compras.` });
+  if (caixa > 0 && caixa >= Math.min(...linhas.map(l => l.preco).filter(Boolean), Infinity)) alertas.push({ nivel: 'info', texto: `${brl(caixa)} em caixa parado. Veja o plano de compras.` });
   if (linhas.some(l => l.pm_estimado)) alertas.push({ nivel: 'info', texto: 'Há preços médios estimados (importação). Corrija com as notas de corretagem para precisão total.' });
 
   const comMagic = linhas.filter(l => l.magic);
@@ -325,7 +357,8 @@ export function buildState(input: {
     },
     posicoes: linhas,
     calendario: porMes,
-    plano: planoCompras(linhas, caixa, fase, precos),
+    plano: planoCompras(linhas, caixa, fase, precos, pol),
+    politica: pol,
     projecao: projecao(patrimonio, input.aporte_mensal, input.missao.marcos),
     alertas,
   };

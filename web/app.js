@@ -82,7 +82,7 @@ function pinGate(sess) {
   const novo = !sess.configurado;
   $app.innerHTML = `<div class="gate"><div class="card"><div class="mira">${EMBLEM.replace('<svg', '<svg class="emb"')}</div>
     <div class="eyebrow" style="justify-content:center;--sem-linha:1">INSA / Centro de comando</div>
-    <h1 style="margin-bottom:6px">${novo ? 'Bem-vindo, Senhor.' : 'Identifique-se, Senhor.'}</h1>
+    <h1 style="margin-bottom:6px">${novo ? 'Bem-vindo.' : 'Identifique-se.'}</h1>
     <p class="muted">${novo ? 'Crie um PIN de 6 a 12 dígitos. Ele protege o app neste computador e não pode ser recuperado.' : 'Digite o seu PIN.'}</p>
     <form id="pinf"><label>PIN<input name="pin" type="password" inputmode="numeric" pattern="[0-9]{6,12}" minlength="6" maxlength="12" autocomplete="off" required autofocus></label>
       ${novo ? '<label style="margin-top:10px">Repita o PIN<input name="pin2" type="password" inputmode="numeric" minlength="6" maxlength="12" autocomplete="off" required></label>' : ''}
@@ -203,9 +203,10 @@ function leituraPonte(s) {
   const ataque = ps.filter(p => p.zona === 'ataque').length;
   const quedas = ps.filter(p => p.var_dia != null).sort((a, b) => a.var_dia - b.var_dia);
   const q = quedas[0];
-  const partes = [`Senhor, ${ataque} de ${ps.length} pelotões estão na zona de ataque.`];
+  const partes = [`${ataque} de ${ps.length} ativos estão na zona de ataque.`];
   if (q && q.var_dia < 0) partes.push(`A maior queda medida é ${q.ticker}, em ${nf(q.var_dia)}% contra o fechamento anterior.`);
-  if (s.plano.compras.length) partes.push(`Com o caixa de ${brl(s.totais.caixa)}, o plano recruta ${s.plano.compras.map(c => `${c.qtd} ${c.ticker}`).join(' e ')}.`);
+  if (s.plano.compras.length) partes.push(`Com o caixa de ${brl(s.totais.caixa)}, o plano compra ${s.plano.compras.map(c => `${c.qtd} ${c.ticker}`).join(' e ')}.`);
+  else if (s.plano.acumulando) partes.push(`Caixa de ${brl(s.totais.caixa)} acumulando para ${s.plano.acumulando.ticker}: faltam ${brl(s.plano.acumulando.falta)} para 1 cota.`);
   else if (s.totais.caixa > 0) partes.push(`Caixa de ${brl(s.totais.caixa)} aguardando o próximo aporte.`);
   return partes.join(' ');
 }
@@ -245,7 +246,7 @@ function cockpit() {
   }
   frame('cockpit', `
     <div class="eyebrow">INSA / Centro de comando</div>
-    <h1>A missão em perspectiva, Senhor.</h1>
+    <h1>A missão em perspectiva.</h1>
     <div class="nucleo">
       <div class="card reator"><h2>Anéis do núcleo</h2>${ophanim(s)}</div>
       <div class="leituras">
@@ -266,9 +267,12 @@ function cockpit() {
       <div class="card"><div class="eyebrow">Próximo passo / Plano de compras · ${esc(m.fase?.nome ?? '')}</div>
         ${s.plano.compras.length ? `<table style="margin-top:8px"><tbody>${s.plano.compras.map(c => `<tr><td><span class="tk">${esc(c.ticker)}</span></td><td>${c.qtd} × ${brl(c.preco)}</td><td>${brl(c.valor)}</td></tr>`).join('')}
           <tr><td class="faint">sobra</td><td></td><td class="faint">${brl(s.plano.sobra)}</td></tr></tbody></table>
-          <p class="faint">Ativo mais atrasado contra o peso-alvo, só com caixa. Nunca vende.</p>
+          <p class="faint">Regra do Board: maior distância abaixo do peso-alvo; empate → BTLG11, CMIG4. Só Fase 1 até R$ 8.000. BBAS3 e BITC11 congelados. Nunca vende.</p>
           <div class="actions"><a class="btn ghost" href="#/registrar?tipo=compra&ticker=${encodeURIComponent(s.plano.compras[0].ticker)}&qtd=${s.plano.compras[0].qtd}&preco=${s.plano.compras[0].preco}">Registrar compra executada</a></div>`
-          : `<p class="muted">Caixa insuficiente para uma cota do ativo mais atrasado.</p>`}
+          : s.plano.acumulando ? `<p style="margin-top:8px">Acumulando para <span class="tk">${esc(s.plano.acumulando.ticker)}</span>: cota ${brl(s.plano.acumulando.preco)}, faltam <b>${brl(s.plano.acumulando.falta)}</b>.</p>
+            <p class="faint">O caixa não desvia para outro ativo: espera completar 1 cota do 1º da fila (ou soma ao aporte).</p>`
+          : `<p class="muted">Nenhum ativo elegível abaixo do peso-alvo.</p>`}
+        ${(s.plano.fila || []).length ? `<p class="faint" style="margin-top:6px">Fila: ${s.plano.fila.slice(0, 4).map(f => `${esc(f.ticker)} ${nf(f.distancia_pp)} pp`).join(' · ')}</p>` : ''}
       </div>
     </section>
     ${s.alertas.length ? `<section><h2>Condições</h2>${s.alertas.map(a => `<div class="alert ${a.nivel}"><span>${a.nivel === 'critico' ? '▲' : a.nivel === 'atencao' ? '●' : 'ℹ'}</span><span>${esc(a.texto)}</span></div>`).join('')}</section>` : ''}
@@ -583,7 +587,7 @@ function ajustes() {
     const cf = document.getElementById('cfgf');
     if (!CONV) { try { CONV = await api('/api/manuel/conversa'); } catch {} }
     if (CONV) CONV.config = { ...CONV.config, voz_motor: cf.voz_motor.value, voz_nome: cf.voz_nome.value };
-    falar(`Às suas ordens, Senhor. Patrimônio em ${brl(S?.totais?.patrimonio ?? 0)}, renda estimada de ${brl(S?.totais?.renda_mes_estimada ?? 0)}/mês. Os dividendos seguem trabalhando, mesmo quando o Senhor dorme.`);
+    falar(`Patrimônio em ${brl(S?.totais?.patrimonio ?? 0)}, renda estimada de ${brl(S?.totais?.renda_mes_estimada ?? 0)}/mês. Os dividendos seguem trabalhando, mesmo quando o Senhor dorme.`);
   });
   api('/api/audit').then(rows => { document.getElementById('aud').innerHTML = rows.slice(0, 30).map(r => `${esc(r.em)} · ${esc(r.acao)}`).join('<br>') || 'vazia'; }).catch(() => {});
 }
@@ -772,6 +776,8 @@ function md(t) {
     const m = l.match(/^\s*(?:[-•*]|\d+[.)])\s+(.*)$/);
     if (m) { if (!lista) { out += '<ul>'; lista = true; } out += `<li>${m[1]}</li>`; continue; }
     if (lista) { out += '</ul>'; lista = false; }
+    const h = l.match(/^\s*#{1,4}\s+(.*)$/);
+    if (h) { out += `<h4 class="md-h">${h[1]}</h4>`; continue; }
     out += l.trim() ? `<p>${l}</p>` : '';
   }
   return out + (lista ? '</ul>' : '');
@@ -944,19 +950,19 @@ function abrirRostoManuel() {
 const ehLongo = (t) => String(t || '').length > 420;
 async function processarFala(falado) {
   const r = rostoAberto() ?? abrirRostoManuel();
-  if (!falado) { r.ouvindo(false); r.legenda('Não ouvi nada, Comandante. Segure o botão e fale.'); return; }
+  if (!falado) { r.ouvindo(false); r.legenda('Não ouvi nada. Segure o botão e fale.'); return; }
   r.ouvindo(false); r.legenda('“' + falado + '”');
   const a = interpretar(falado, { pendente: !!VOZ.prop, aguardando: VOZ.aguardando });
   if (a.tipo === 'nada') return;
   if (a.tipo === 'parar') { pararFala(); r.fechar(); return; }
-  if (a.tipo === 'limpar') { limparConversa(); falar('Conversa limpa, Comandante.', null, { tela: true }); return; }
+  if (a.tipo === 'limpar') { limparConversa(); falar('Conversa limpa.', null, { tela: true }); return; }
   if (a.tipo === 'perguntar') { VOZ.aguardando = a.aguardar; falar(a.fala, null, { tela: true }); if (ESCUTA && (a.aguardar || a.fala.startsWith('Às suas ordens'))) ouvirDepoisDeFalar(); return; }
   if (a.tipo === 'confirmar' || a.tipo === 'recusar') {
     const p = VOZ.prop; VOZ.prop = null;
     try {
       const res = await api(`/api/manuel/propostas/${p.id}/${a.tipo === 'confirmar' ? 'confirmar' : 'recusar'}`, { method: 'POST', body: {} });
       rostoAberto()?.gesto?.(res.status === 'confirmada' ? 'sim' : 'nao');
-      falar(res.status === 'confirmada' ? 'Gravado no razão, Comandante.' : 'Proposta descartada.', null, { tela: true });
+      falar(res.status === 'confirmada' ? 'Gravado no razão.' : 'Proposta descartada.', null, { tela: true });
       if (res.status === 'confirmada') { await load().catch(() => {}); }
       atualizarConsole();
     } catch (e) { falar('Não consegui concluir: ' + e.message, null, { tela: true }); }
@@ -1070,7 +1076,7 @@ async function atenderChamada() {
   await ESCUTA?.pausar();
   pararFala(); bip(); navigator.vibrate?.(15);
   const r = rostoAberto() ?? abrirRostoManuel();
-  r.ouvindo(true, 'Às ordens, Comandante.');
+  r.ouvindo(true, 'Pode falar.');
   const s = ouvir({ api, auto: true, aoParcial: (t) => rostoAberto()?.ouvindo(true, t) });
   VOZ.ouvindo = s;
   try { const t = await s.texto; VOZ.ouvindo = null; await processarFala(t); }
@@ -1092,18 +1098,18 @@ function fecharSeOcioso() {
 document.addEventListener('visibilitychange', () => { if (!ESCUTA) return; if (document.hidden) ESCUTA.pausar(); else retomarEscuta(); });
 
 const MOTIVACAO = [
-  'Cada cota comprada hoje é um soldado que trabalha para o Senhor todos os meses.',
-  'Disciplina vence o humor do mercado. O plano segue firme.',
-  'Os juros compostos são lentos no início e implacáveis no fim. Continue alimentando a máquina.',
-  'Dia de queda é dia de preço melhor para quem pensa em décadas.',
-  'A renda passiva se constrói em silêncio, aporte após aporte.',
-  'Quem reinveste os proventos não espera o futuro: fabrica o futuro.',
-  'Constância é a vantagem que nenhum mercado tira do Senhor.',
-  'O exército cresce um pelotão de cada vez. Hoje é mais um passo.',
-  'Paciência não é esperar. É manter o plano enquanto o tempo trabalha.',
-  'Pequenos aportes, repetidos sem falhar, viram grandes rendas.',
-  'O mercado oscila; a estratégia, não. Seguimos na rota.',
-  'Cada provento reinvestido é uma bola de neve ganhando massa.',
+  'Regra do dia: o próximo real vai para o maior desvio abaixo do alvo.',
+  'Volatilidade não é perda realizada. Sem vendas, sem decisões por humor.',
+  'Proventos 100% reinvestidos: custo zero de aquisição de renda.',
+  'O retorno composto é função de tempo e constância do aporte, não de timing.',
+  'Queda de preço com tese intacta é yield de entrada maior.',
+  'Concentração acima do teto é risco, não convicção.',
+  'Caixa parado tem custo de oportunidade. Alocar quando completar 1 cota.',
+  'Disciplina de execução vale mais que previsão de mercado.',
+  'Cada cota reinvestida reduz a dependência do aporte futuro.',
+  'Meta sem aporte é premissa otimista. Mantenha o aporte mensal.',
+  'Rebalancear só com dinheiro novo: zero imposto, zero corretagem extra.',
+  'Liquidez primeiro: reserva de emergência fora da carteira.',
 ];
 /* Terminal deslizante: um ponto âmbar no topo de toda tela; toque ou puxe para baixo e o Manuel desce em tela cheia */
 let PUXA = null;
@@ -1133,7 +1139,7 @@ async function abrirTerminal() {
   navigator.vibrate?.(12);
   if (mostrarAvisos(r)) return;
   if (VOZ.ultimaFala) { r.legenda(VOZ.ultimaFala); return; }
-  r.legenda('Às suas ordens, Comandante.');
+  r.legenda('Pronto. Pode perguntar.');
   try {   // sem fala recente: mostra a leitura do dia (sem falar; o Comandante segura o botão se quiser)
     const sd = await api('/api/manuel/saudacao');
     const leitura = String(sd.texto || '').replace(/^Senhor,?\s*/i, '').split('\n').filter(Boolean).slice(0, 3).join(' ');
@@ -1146,10 +1152,10 @@ async function abrirTerminal() {
 function tocarAvatar(tipo) {
   if (tipo === 'duplo') { pararFala(); saudacaoDiaria(true); return; }
   const r = rostoAberto(); if (!r) return;
-  if (FALA_ATIVA()) { pararFala(); r.legenda('Às ordens, Comandante.'); return; }   // tocar enquanto ele fala = calar
+  if (FALA_ATIVA()) { pararFala(); r.legenda('Pode falar.'); return; }   // tocar enquanto ele fala = calar
   if (AVISOS.length) { mostrarAvisos(r); return; }
   if (podeOuvir()) { atenderChamada(); return; }
-  r.legenda('Às ordens, Comandante. Escreva abaixo ou toque duas vezes para a leitura do dia.');
+  r.legenda('Escreva abaixo ou toque duas vezes para a leitura do dia.');
 }
 const FALA_ATIVA = () => !!AUDIO || (FALANDO_NATIVO || (('speechSynthesis' in window) && speechSynthesis.speaking));
 
@@ -1194,7 +1200,7 @@ function vigiar(live = null) {
 }
 function mostrarAvisos(r) {
   if (!AVISOS.length) return false;
-  const txt = 'Comandante, ' + (AVISOS.length === 1 ? 'um aviso: ' : AVISOS.length + ' avisos. ') + AVISOS.map(a => a.texto).join(' ');
+  const txt = (AVISOS.length === 1 ? 'Um aviso: ' : AVISOS.length + ' avisos. ') + AVISOS.map(a => a.texto).join(' ');
   r.humor({ ...estadoHumor(), alertas: AVISOS.length }); r.gesto?.('duvida');
   const tks = new Set(AVISOS.map(a => a.ticker).filter(Boolean));
   try { const vistos = JSON.parse(localStorage.getItem(chaveAvisos()) || '[]'); localStorage.setItem(chaveAvisos(), JSON.stringify([...vistos, ...AVISOS.map(a => a.id)])); } catch {}
@@ -1218,7 +1224,7 @@ async function saudacaoDiaria(forcar = false) {
     const oi = h < 12 ? 'Bom dia' : h < 19 ? 'Boa tarde' : 'Boa noite';
     const leitura = String(sd.texto || '').replace(/^Senhor,?\s*/i, '').split('\n').filter(Boolean).slice(0, 3).join(' ');
     const dia = Math.floor(Date.now() / 86400000);
-    const msg = `${oi}, Comandante. ${leitura} ${MOTIVACAO[dia % MOTIVACAO.length]}`;
+    const msg = `${oi}. ${leitura} ${MOTIVACAO[dia % MOTIVACAO.length]}`;
     if (!pref('rosto')) { falar(msg); return; }
     const r = abrirRostoManuel(); r.humor({ variacao_pct: sd.variacao_pct, alertas: sd.alertas });
     falar(msg, null, { tela: true }); r.legenda(msg);
@@ -1246,7 +1252,7 @@ async function manuel() {
   const ativo = c.config.provedor === 'gemini' ? (c.chaves.gemini ? 'Gemini' : 'Claude') : (c.chaves.claude ? 'Claude' : 'Gemini');
   frame('manuel', `<div class="eyebrow">M.A.N.U.E.L. / Console</div>
     ${pref('rosto') ? `<h1 class="sr">M.A.N.U.E.L., às ordens</h1><div class="avatar-console" id="avatar-host"></div>`
-      : `<div class="presenca"><div>${HOLO}</div><div><h1 style="margin-bottom:4px">Às ordens, Senhor.</h1>
+      : `<div class="presenca"><div>${HOLO}</div><div><h1 style="margin-bottom:4px">M.A.N.U.E.L. · Board</h1>
       <div class="estado-ia" id="estado">Em prontidão</div>
       <p class="faint" style="margin:6px 0 0">Oficial de inteligência da carteira. Analisa, simula e pesquisa; lançamentos só com a sua confirmação.</p></div></div>`}
     ${semChave ? `<div class="banner">Nenhuma chave de IA configurada: só as respostas locais funcionam. <a href="#/ajustes">Cadastre a do Claude e/ou a do Gemini em Ajustes → Inteligência.</a></div>` : ''}

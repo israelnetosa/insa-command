@@ -56,7 +56,7 @@ test('Claude usa ferramenta e responde; dossiê vai como dado no system', async 
   assert.deepEqual(r.uso, { entrada: 250, saida: 50 });
   const sys = chamadas[0].body.system[0].text as string;
   assert.deepEqual(chamadas[0].body.system[0].cache_control, { type: 'ephemeral' });   // cache de prompt
-  assert.ok(chamadas[0].body.max_tokens <= 1000);
+  assert.ok(chamadas[0].body.max_tokens <= 1500);
   assert.match(sys, /<dossie>[\s\S]*AAAA11[\s\S]*<\/dossie>/);
   assert.match(sys, /DADO da carteira/);
   // o resultado da ferramenta volta como tool_result
@@ -162,7 +162,7 @@ test('limite (429) troca de modelo na hora e o modelo esgotado fica de fora nas 
   const gens = chamadas.filter(c => c.url.includes(':generateContent'));
   assert.deepEqual(gens.map(c => c.url.match(/models\/([^:]+)/)![1]), ['gemini-3.5-flash-lite', 'gemini-3.8-flash', 'gemini-3.8-flash']);
   // saída limitada e raciocínio baixo nos Gemini 3+
-  assert.equal(gens[1].body.generationConfig.maxOutputTokens, 900);
+  assert.equal(gens[1].body.generationConfig.maxOutputTokens, 1400);
   assert.equal(gens[1].body.generationConfig.thinkingConfig.thinkingLevel, 'low');
 });
 

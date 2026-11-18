@@ -127,3 +127,31 @@ test('bitcoin em reais: BTC-USD × dólar no Yahoo, CoinGecko de reserva', async
     assert.match(c!.fonte, /CoinGecko/);
   } finally { globalThis.fetch = orig; }
 });
+
+// ───── Plano de Guerra (regras do Board) ─────
+import { filaAlocacao, faseAtual, POLITICA_PADRAO } from '../src/engine.ts';
+const F1 = { id: 'fase1', nome: 'Fase 1', ate: 10000, dy: 7, pesos: { BTLG11: 28, ITUB4: 18, WEGE3: 18, NDIV11: 12, CMIG4: 12, TAEE11: 12 } };
+const F2 = { id: 'fase2', nome: 'Fase 2', ate: 30000, dy: 7, pesos: { BTLG11: 22, BBDC4: 8 } };
+
+test('Board: só Fase 1, sem congelados nem TAEE11, mais distante do alvo primeiro', () => {
+  const valor = { BTLG11: 774, ITUB4: 608, WEGE3: 260, NDIV11: 343, CMIG4: 865, TAEE11: 449, BBAS3: 100 };
+  const f = filaAlocacao(valor, 4488, F1, { BTLG11: 97, ITUB4: 40, WEGE3: 52, NDIV11: 114, CMIG4: 11, TAEE11: 41, BBAS3: 14 }, 4488);
+  assert.deepEqual(f.map(l => l.ticker), ['WEGE3', 'BTLG11', 'ITUB4', 'NDIV11']);   // CMIG4 acima do alvo, TAEE11 fora da Fase 1
+});
+
+test('Board: empate técnico vai para BTLG11, depois CMIG4', () => {
+  const f = filaAlocacao({ BTLG11: 0, CMIG4: 0, WEGE3: 0 }, 1000, { ...F1, pesos: { WEGE3: 20.3, CMIG4: 20.1, BTLG11: 20 } }, { BTLG11: 97, CMIG4: 11, WEGE3: 52 }, 1000);
+  assert.deepEqual(f.map(l => l.ticker), ['BTLG11', 'CMIG4', 'WEGE3']);
+});
+
+test('Board: caixa que não paga 1 cota do 1º da fila acumula (não desvia)', () => {
+  const p = planoCompras([{ ticker: 'WEGE3', valor: 0, preco: 52 }, { ticker: 'CMIG4', valor: 900, preco: 11 }], 40, F1, { WEGE3: 52, CMIG4: 11, BTLG11: 97 });
+  assert.equal(p.compras.length, 0); assert.equal(p.sobra, 40);
+  assert.equal(p.acumulando?.ticker, 'BTLG11'); assert.equal(p.acumulando?.falta, 57);   // BTLG11 é o mais distante; não compra CMIG4 barata no lugar
+});
+
+test('Board: Fase 2 só acima de R$ 8.000', () => {
+  assert.equal(faseAtual(7999, [F1, F2])?.id, 'fase1');
+  assert.equal(faseAtual(8500, [F1, F2])?.id, 'fase2');
+  assert.equal(POLITICA_PADRAO.congelados.includes('BITC11'), true);
+});

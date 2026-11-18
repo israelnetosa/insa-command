@@ -72,7 +72,7 @@ async function state(env: Env) {
   const st = buildState({
     movements: d.movements, assets: d.assets, quotes: d.quotes,
     fases: d.settings.fases ?? [], missao: d.settings.missao ?? { meta_mensal: 20000, dy_missao: 7, marcos: [25, 100], teto_concentracao: 25 },
-    aporte_mensal: d.settings.aporte_mensal ?? 0, calendario_estimado: d.settings.calendario_estimado,
+    aporte_mensal: d.settings.aporte_mensal ?? 0, calendario_estimado: d.settings.calendario_estimado, politica: d.settings.politica,
   });
   return { ...st, regras: d.settings.regras ?? [], lentes: d.settings.lentes ?? [], fases: d.settings.fases ?? [], aporte_mensal: d.settings.aporte_mensal ?? 0, estrategia: d.settings.estrategia ?? null, vazio: d.movements.length === 0, em_pregao: emPregao() };
 }
@@ -148,15 +148,15 @@ function toolkit(env: Env): Toolkit {
       const st = cache ??= await state(env);
       const assets = (await env.DB.prepare('SELECT ticker, div_mes_cota FROM assets').all<any>()).results;
       const dmc = new Map(assets.map((a: any) => [a.ticker, a.div_mes_cota ?? 0]));
-      const fase = faseAtual(st.totais.patrimonio + v, st.fases);
+      const fase = faseAtual(st.totais.patrimonio + v, st.fases, st.politica);
       const precos: Record<string, number> = {};
       for (const p of st.posicoes) precos[p.ticker] = p.preco;
       const q = (await env.DB.prepare('SELECT ticker, preco FROM quotes').all<any>()).results;
       for (const r of q) precos[r.ticker] ??= r.preco;
-      const plano = planoCompras(st.posicoes, st.totais.caixa + v, fase, precos);
+      const plano = planoCompras(st.posicoes, st.totais.caixa + v, fase, precos, st.politica);
       const rendaExtra = plano.compras.reduce((s, c) => s + c.qtd * (Number(dmc.get(c.ticker)) || 0), 0);
-      return { caixa_atual: st.totais.caixa, aporte: v, disponivel: +(st.totais.caixa + v).toFixed(2), fase: fase?.nome, compras: plano.compras, sobra: plano.sobra,
-        renda_mensal_adicional_estimada: +rendaExtra.toFixed(2), regra: 'ativo mais atrasado contra o peso-alvo, cotas inteiras, sem vendas' };
+      return { caixa_atual: st.totais.caixa, aporte: v, disponivel: +(st.totais.caixa + v).toFixed(2), fase: fase?.nome, compras: plano.compras, sobra: plano.sobra, acumulando: plano.acumulando, fila: plano.fila.slice(0, 5),
+        renda_mensal_adicional_estimada: +rendaExtra.toFixed(2), regra: 'Plano de Guerra: só Fase 1 até R$ 8.000; BBAS3 e BITC11 congelados; sempre o mais distante abaixo do peso-alvo; empate técnico (≤0,5 pp) → BTLG11, depois CMIG4; cotas inteiras; se não paga 1 cota do 1º da fila, acumula; proventos 100% reinvestidos; nunca vende' };
     },
     propor: async (args, pedido) => {
       const m = normalizeMov(args);
