@@ -26,6 +26,7 @@ Centro de comando **privado** da carteira INSA Dividend Army. É a sucessora do 
 - **2.5.3 · volume:** sombreamento 3D próprio na malha (luz de frente-cima, laterais e sob o nariz/queixo mais escuras) com brilho azul profundo na silhueta, seguindo as expressões; bokeh ao fundo; menos estouro de brilho.
 - **2.5.4 · como na referência:** nós irregulares e cintilantes (tamanho e brilho variam e piscam), busto em plexo irregular (pontos ligados aos vizinhos), anéis dourados largos e incandescentes cruzando o rosto, rastro horizontal de luz nos olhos e borda turquesa.
 - **2.5.5 · corpo humano:** pescoço mais fino que a mandíbula e nascendo por trás dela, trapézio descendo até ombros arredondados, clavículas e esternocleidomastoideos discretos; tudo gerado de um lado e espelhado (simetria perfeita); o busto quase não gira com a cabeça.
+- **2.5.6 · arte final ("A Arte da Guerra"):** o Comandante escolheu o busto "armadura": esternocleidomastoideos, clavículas, trapézio, deltoides, base do peitoral e esterno em linhas fortes, como placas; simétrico (espelhado).
 - Créditos: cabeça de exemplo "facecap" do three.js (Face Cap, Bannaflak), sem texturas.
 
 ## Novidades da 2.4 · "Hey Manuel"

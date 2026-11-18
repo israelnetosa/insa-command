@@ -186,34 +186,46 @@ export async function criar(canvas, { forte = true, modelo = '/modelos/manuel.gl
     rastro.scale.set(r * 9, r * 1.1, 1); rastro.position.copy(frente); rastro.renderOrder = 5; rastro.userData.op = 0.55; rastro.userData.base = frente.clone(); grupoCabeca.add(rastro); brilhosOlho.push(rastro);
   }
   // busto (pescoço e ombros) em malha de plexo: superfície em grade com nós, fios e diagonais; some para baixo
-  // busto humano em plexo: pescoço que nasce sob a mandíbula, trapézio descendo até ombros arredondados,
-  // clavículas e esternocleidomastoideos discretos. Gerado só do lado direito e espelhado: simetria perfeita.
+  // busto "armadura" (arte final escolhida pelo Comandante): pescoço com esternocleidomastoideos marcados,
+  // clavículas, trapézio, deltoides, base do peitoral e esterno em linhas fortes, como placas de uma armadura.
+  // Gerado só do lado direito e espelhado: simetria perfeita.
   const busto = (() => {
     let sem = 20261118; const rnd = () => { sem = (sem * 1664525 + 1013904223) >>> 0; return sem / 4294967296; };
-    const N = forte ? 1300 : 700, pts = [], cores = [];
+    const N = forte ? 1500 : 800, pts = [], cores = [];
     const lerp2 = (a, b, k) => a + (b - a) * k;
-    // superfície: u = 0 (centro) … 1 (lado), v = 0 (sob o queixo) … 1 (peito)
-    const sup = (u, v) => {
-      const a = u * Math.PI * 0.6, k = Math.max(0, (v - 0.28) / 0.72);
-      const larg = 0.3 + Math.min(v, 0.3) * 0.22 + Math.pow(k, 0.7) * 1.42, prof = 0.24 + k * 0.34;   // pescoço mais fino que a mandíbula
-      const x = Math.sin(a) * larg;
-      const desce = k * 0.5 * Math.pow(Math.min(1, x / 1.45), 1.35);            // trapézio caindo para o ombro
-      const ombro = Math.max(0, (x - 1.25) / 0.45);                                // deltoide arredondado
-      const y = -0.45 - v * 1.55 - desce - ombro * ombro * 0.28;   // começa por trás da mandíbula: a cabeça cobre o encaixe
-      const z = Math.cos(a) * prof - 0.3 + k * 0.08 - ombro * 0.12;
-      return [x, y, z];
+    // silhueta de cima (y do contorno) para cada x ≥ 0
+    const topo = (x) => {
+      if (x < 0.34) return -0.62;                                                         // pescoço
+      if (x < 1.28) { const k = (x - 0.34) / 0.94; return -1.08 - 0.4 * Math.pow(k, 1.5); }   // trapézio descendo
+      const cx = 1.3, cy = -1.78, r = 0.32; const d = Math.min(r, x - cx + 0.02);            // ombro arredondado (deltoide)
+      return cy + Math.sqrt(Math.max(0, r * r - d * d)) * 0.95;
     };
-    const brilho = (u, v) => 0.75 * Math.min(1, v / 0.14 + 0.15) * Math.pow(1 - v, 1.35) * (1 - Math.pow(u, 3) * 0.6);
-    const add = (x, y, z, b) => { for (const sx of x < 0.005 ? [1] : [1, -1]) { pts.push(sx * x, y, z); cores.push(b, b, b); } };
+    // profundidade da frente do corpo (z), com peitoral e clavícula
+    const frente = (x, y) => {
+      if (y > -1.2 && x < 0.4) return 0.2 * Math.sqrt(Math.max(0, 1 - (x / 0.4) ** 2)) - 0.12;   // pescoço
+      const ombro = Math.max(0, (x - 1.0) / 0.65);
+      const peito = 0.3 * Math.cos(Math.min(1, x / 1.7) * Math.PI / 2) + 0.08 * Math.exp(-(((x - 0.55) / 0.35) ** 2 + ((y + 2.05) / 0.35) ** 2));
+      return peito - ombro * 0.2 - 0.12;
+    };
+    const add = (x, y, z, b) => { for (const sx of x < 0.01 ? [1] : [1, -1]) { pts.push(sx * x, y, z); cores.push(b, b, b); } };
+    const brilho = (x, y) => Math.max(0, Math.min(1, 1.15 - (-y - 0.62) * 0.52)) * (1 - Math.pow(Math.min(1, x / 1.75), 3) * 0.55);
+    // 1. superfície (pescoço e tronco), mais densa em cima
     for (let n = 0; n < N; n++) {
-      const v = rnd() < 0.3 ? rnd() * 0.32 : 0.25 + Math.pow(rnd(), 1.35) * 0.75, u = Math.pow(rnd(), 0.9);
-      const [x, y, z] = sup(u, v); add(x, y, z + (rnd() - 0.5) * 0.02, brilho(u, v) * (0.45 + rnd() * 0.6));
+      const pesc = rnd() < 0.28;
+      let x, y;
+      if (pesc) { x = rnd() * 0.36; y = lerp2(-0.64, -1.2, rnd()); }
+      else { x = 0.05 + Math.pow(rnd(), 0.85) * 1.6; const t = topo(x); y = t - Math.pow(rnd(), 1.5) * (2.8 + t); }
+      if (y > topo(x)) continue;
+      add(x, y, frente(x, y) + (rnd() - 0.5) * 0.02, brilho(x, y) * (0.45 + rnd() * 0.55));
     }
-    // linhas anatômicas discretas sobre a superfície
-    const linha = (f, n, b) => { for (let k = 0; k <= n; k++) { const [u, v] = f(k / n); const [x, y, z] = sup(u, v); add(x, y, z + 0.01, b * brilho(u, v)); } };
-    linha((t) => [lerp2(0.62, 0.08, t), lerp2(0.02, 0.36, t)], 26, 0.75);        // esternocleidomastoideo
-    linha((t) => [lerp2(0.04, 0.78, t), 0.38 + Math.sin(t * Math.PI) * 0.025], 34, 0.8);   // clavícula
-    linha((t) => [lerp2(0.62, 1, t), lerp2(0.3, 0.42, t)], 26, 0.6);             // linha do trapézio ao ombro
+    // 2. linhas anatômicas fortes: as "placas" da armadura
+    const linha = (f, n, b) => { for (let k = 0; k <= n; k++) { const [x, y] = f(k / n); add(x, y, frente(Math.abs(x), y) + 0.01, b * brilho(Math.abs(x), y)); } };
+    linha((t) => [lerp2(0.32, 0.07, t), lerp2(-0.66, -1.36, t) + Math.sin(t * Math.PI) * 0.03], 34, 1.3);                     // esternocleidomastoideo
+    linha((t) => [lerp2(0.08, 1.22, t), -1.38 - 0.1 * Math.sin(t * Math.PI * 0.9) - t * 0.12], 50, 1.3);                     // clavícula
+    linha((t) => { const x = lerp2(0.34, 1.3, t); return [x, topo(x) - 0.01]; }, 46, 1.15);                                   // trapézio
+    linha((t) => { const a = lerp2(0.2, 1.6, t); return [1.3 + Math.sin(a) * 0.3, -1.8 + Math.cos(a) * 0.3]; }, 30, 1);     // deltoide
+    linha((t) => [lerp2(0.12, 1.1, t), -2.25 + Math.sin(t * Math.PI) * 0.12 - t * 0.1], 40, 0.8);                           // base do peitoral
+    linha((t) => [0.005, lerp2(-1.4, -2.7, t)], 30, 0.7);                                                                     // esterno
     const M = pts.length / 3;
     for (let n = 0; n < M; n++) { const b = cores[n * 3]; cores[n * 3] = CIANO.r * b; cores[n * 3 + 1] = CIANO.g * b; cores[n * 3 + 2] = CIANO.b * b; }
     // 3. plexo: cada ponto liga aos 3 vizinhos mais próximos
