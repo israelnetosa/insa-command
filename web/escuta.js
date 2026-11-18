@@ -6,7 +6,9 @@
 // e a chamada só vale com confiança alta na palavra "manuel": isso corta a maior parte dos falsos alarmes.
 
 export const GRAMATICA = ['manuel', 'ei manuel', 'oi manuel', 'olá manuel', 'ola manuel', 'alô manuel',
-  'bom dia manuel', 'boa tarde manuel', 'boa noite manuel', 'fala manuel', 'e aí manuel', '[unk]'];
+  'bom dia manuel', 'boa tarde manuel', 'boa noite manuel', 'fala manuel', 'e aí manuel',
+  // palavras parecidas que NÃO chamam: entram na gramática para "roubar" o som delas
+  'manual', 'manuais', 'manuela', 'mano', 'animal', '[unk]'];
 const CONF_MIN = 0.82;
 
 let script = null;
