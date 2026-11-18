@@ -16,6 +16,13 @@ Centro de comando **privado** da carteira INSA Dividend Army. É a sucessora do 
 | Peso do app | 412 KB de JS | 35 KB (12 KB comprimido) |
 | Hospedagem | Presa ao Manus | Sua conta Cloudflare (plano gratuito) |
 
+## Novidades da 2.5 · Manuel em malha 3D
+
+- **Rosto 3D "malha reativa":** cabeça em malha de fios com nós luminosos, olhos âmbar brilhando, busto em nuvem de pontos, anéis dourados com faíscas e poeira de dados. WebGL (three.js), carregado só quando o rosto abre.
+- **Expressões de verdade:** a cabeça tem 52 expressões (padrão ARKit). A boca usa abrir mandíbula, arredondar, franzir e esticar conforme o visema e o volume da voz; sobrancelhas, sorriso, piscadas e olhar vêm do humor do dia e do dedo/mouse.
+- **Por camadas:** aparelho forte (ex.: S24 Ultra) com brilho (bloom) e mais partículas; médio sem brilho; fraco ou "reduzir movimento" fica no rosto de fios 2D. Enquanto o 3D carrega, o 2D aparece.
+- Créditos: cabeça de exemplo "facecap" do three.js (Face Cap, Bannaflak), sem texturas.
+
 ## Novidades da 2.4 · "Hey Manuel"
 
 - **Escuta contínua opcional** (Ajustes → M.A.N.U.E.L.): com o app aberto, o Manuel atende a "olá Manuel", "ei Manuel", "bom dia Manuel"… sem tocar em nada. Bipe, o rosto aparece ouvindo, você fala o pedido; ele responde e, se fizer uma pergunta, já volta a ouvir.

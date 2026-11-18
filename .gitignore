@@ -11,3 +11,5 @@ test/privado.test.ts
 insa-migracao-*.json
 public/vendor/
 public/vosk/
+public/rosto3d.js
+public/modelos/

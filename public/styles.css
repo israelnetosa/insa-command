@@ -555,3 +555,6 @@ html.com-rosto body { overflow: hidden; }
 .escuta-ind[data-estado="baixando"] i, .escuta-ind[data-estado="carregando"] i { background: #ffb347; }
 .escuta-ind[data-estado="erro"] i { background: #ff4d5e; }
 @media (max-width: 700px) { .escuta-ind span { display: none; } .escuta-ind { padding: 7px; } }
+.rosto-cv3d { opacity: 0; transition: opacity .7s ease; }
+.rosto-cv3d.pronto { opacity: 1; }
+.rosto-cv.some:not(.rosto-cv3d) { opacity: 0; transition: opacity .7s ease; }

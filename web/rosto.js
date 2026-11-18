@@ -146,6 +146,7 @@ export function humor(estado = {}) {
 }
 
 let ATUAL = null;
+const pref3d = () => { try { return localStorage.getItem('insa.pref.rosto3d') !== '0'; } catch { return true; } };
 /**
  * Abre o rosto em tela cheia. Devolve um controle:
  *  falar(texto, { audio, fala })  · posicao(charIndex) · ouvindo(bool, parcial) · legenda(t) · humor(estado) · fechar()
@@ -158,17 +159,29 @@ export function abrirRosto({ estado = {}, aoFechar, aoMicrofone } = {}) {
 
   const el = document.createElement('div');
   el.className = 'rosto'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', 'M.A.N.U.E.L.');
-  el.innerHTML = `<canvas class="rosto-cv"></canvas>
+  el.innerHTML = `<canvas class="rosto-cv rosto-cv3d" hidden></canvas><canvas class="rosto-cv"></canvas>
     <div class="rosto-topo"><span class="rosto-nome">M.A.N.U.E.L.</span><span class="rosto-estado" id="rosto-estado">em linha</span>
       <button type="button" class="rosto-x" aria-label="Fechar">✕</button></div>
     <div class="rosto-baixo"><p class="rosto-legenda" id="rosto-leg" aria-live="polite"></p>
       ${aoMicrofone ? '<button type="button" class="rosto-mic" id="rosto-mic" aria-label="Segure para falar">🎙 segure para falar</button>' : ''}</div>`;
   document.body.appendChild(el);
   document.documentElement.classList.add('com-rosto');
-  const cv = el.querySelector('canvas'), ctx = cv.getContext('2d', { alpha: true, desynchronized: true });
+  const cv = el.querySelector('canvas.rosto-cv:not(.rosto-cv3d)'), ctx = cv.getContext('2d', { alpha: true, desynchronized: true });
+  const cv3 = el.querySelector('.rosto-cv3d');
+  // rosto 3D ("malha reativa"): carregado sob demanda nos aparelhos médios e fortes; até chegar, os fios 2D aparecem
+  let r3 = null;
+  const dpr3 = () => Math.min(devicePixelRatio || 1, nivel === 2 ? 2.25 : 1.5);
+  if (nivel >= 1 && !quieto && window.WebGLRenderingContext && pref3d()) {
+    const url = '/rosto3d.js';
+    import(url).then((mod) => mod.criar(cv3, { forte: nivel === 2 })).then((api) => {
+      if (saindo || !document.body.contains(el)) { api.liberar(); return; }
+      r3 = api; cv3.hidden = false; r3.medir(innerWidth, innerHeight, dpr3());
+      cv3.classList.add('pronto'); cv.classList.add('some'); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, cv.width, cv.height);
+    }).catch(() => { /* fica no rosto 2D */ });
+  }
   const leg = el.querySelector('#rosto-leg'), est = el.querySelector('#rosto-estado');
   let W = 0, H = 0, dpr = 1;
-  const medir = () => { dpr = Math.min(dprMax, devicePixelRatio || 1); W = innerWidth; H = innerHeight; cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); };
+  const medir = () => { dpr = Math.min(dprMax, devicePixelRatio || 1); W = innerWidth; H = innerHeight; cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); r3?.medir(W, H, dpr3()); };
   medir(); addEventListener('resize', medir);
 
   const fios = criarFios(fator);
@@ -201,7 +214,7 @@ export function abrirRosto({ estado = {}, aoFechar, aoMicrofone } = {}) {
 
   const fechar = () => {
     if (saindo) return; saindo = true;
-    setTimeout(() => { el.remove(); document.documentElement.classList.remove('com-rosto'); removeEventListener('resize', medir); ATUAL = null; aoFechar?.(); }, 520);
+    setTimeout(() => { try { r3?.liberar(); } catch {} el.remove(); document.documentElement.classList.remove('com-rosto'); removeEventListener('resize', medir); ATUAL = null; aoFechar?.(); }, 520);
     el.classList.add('saindo');
   };
   el.querySelector('.rosto-x').onclick = (e) => { e.stopPropagation(); fechar(); };
@@ -209,7 +222,7 @@ export function abrirRosto({ estado = {}, aoFechar, aoMicrofone } = {}) {
   el.addEventListener('pointerleave', () => { ponteiro = null; });
   const mic = el.querySelector('#rosto-mic');
   if (mic && aoMicrofone) aoMicrofone(mic);
-  el.addEventListener('click', (e) => { if (e.target === cv && !ouvindoAgora) fechar(); });
+  el.addEventListener('click', (e) => { if ((e.target === cv || e.target === cv3) && !ouvindoAgora) fechar(); });
 
   const ctrl = {
     falar(texto, { audio = null, porPalavra = false } = {}) {
@@ -232,8 +245,8 @@ export function abrirRosto({ estado = {}, aoFechar, aoMicrofone } = {}) {
     /** som bloqueado pelo aparelho: o próximo toque na tela toca a fala */
     aguardarToque(fn) {
       est.textContent = 'toque para ouvir';
-      const h = (e) => { if (e.target.closest('button')) return; e.stopPropagation(); cv.removeEventListener('click', h, true); est.textContent = 'falando'; fn(); };
-      cv.addEventListener('click', h, true);
+      const h = (e) => { if (e.target.closest('button')) return; e.stopPropagation(); el.removeEventListener('click', h, true); est.textContent = 'falando'; fn(); };
+      el.addEventListener('click', h, true);
     },
     fechar, el,
   };
@@ -364,7 +377,8 @@ export function abrirRosto({ estado = {}, aoFechar, aoMicrofone } = {}) {
       P.cabY = Math.sin(T * 0.5) * 0.4 + (falando ? nivelSom * 0.8 : 0);
       P.incl = Math.sin(T * 0.23) * 0.025 + (ouvindoAgora ? 0.05 : 0) + P.olharX * 0.015;
     }
-    desenhar();
+    if (r3) r3.quadro(P, { T, dt, k: entrada, som: nivelSom, falando, ouvindo: ouvindoAgora });
+    else desenhar();
   };
   requestAnimationFrame(quadro);
   return ctrl;
