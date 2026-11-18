@@ -12,6 +12,8 @@ jobs:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with: { node-version: 22, cache: npm }
+      - uses: actions/setup-python@v6
+        with: { python-version: '3.11' }
       - run: npm ci && npm run build:web && bash scripts/modelo-voz.sh
       - name: Vozes de teste (Piper, pt-BR)
         run: |
@@ -25,7 +27,7 @@ jobs:
                    ("Bom dia pessoal, vamos trabalhar hoje", False), ("O mercado abriu em queda e o dólar subiu", False), ("Li o manual de instruções do aparelho", False)]
           out = []
           for i, (f, c) in enumerate(casos):
-              subprocess.run(f'echo "{f}" | python -m piper -m voz.onnx -f wav/r{i}.wav', shell=True, check=True, capture_output=True)
+              subprocess.run(f'echo "{f}" | python -m piper -m voz.onnx -f wav/r{i}.wav', shell=True, check=True)
               subprocess.run(f'ffmpeg -loglevel error -y -f lavfi -t 2 -i anullsrc=r=22050:cl=mono -i wav/r{i}.wav -f lavfi -t 6 -i anullsrc=r=22050:cl=mono -filter_complex "[0][1][2]concat=n=3:v=0:a=1" -ar 16000 -ac 1 -c:a pcm_s16le wav/c{i}.wav', shell=True, check=True)
               out.append({"frase": f, "chama": c, "wav": f"wav/c{i}.wav"})
           json.dump(out, open("casos.json", "w"))
