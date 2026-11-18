@@ -551,8 +551,6 @@ html.com-rosto .puxa-manuel { display: none; }
 .rosto-mic { display: inline-flex; align-items: center; gap: 10px; font: 700 14px var(--head); letter-spacing: .14em; text-transform: uppercase; color: #02121c; background: linear-gradient(90deg, #5ff6ff, #22c8ff 55%, #1a9dff); border: 0; padding: 15px 30px; border-radius: 999px; box-shadow: 0 0 26px rgba(72,229,255,.5), inset 0 1px 0 rgba(255,255,255,.5); }
 .rosto-mic.ativo, .mic.ativo { background: #34f5a4; box-shadow: 0 0 0 6px rgba(52,245,164,.18), 0 0 26px rgba(52,245,164,.55); }
 .mic { display: inline-grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; border: 1px solid rgba(72,229,255,.55); background: rgba(5,10,20,.7); color: #a5f3fc; font-size: 18px; }
-.mic-flutua { position: fixed; z-index: 30; right: 16px; bottom: calc(150px + env(safe-area-inset-bottom)); width: 54px; height: 54px; font-size: 22px; box-shadow: 0 0 18px rgba(72,229,255,.3); }
-@media (min-width: 1001px) { .mic-flutua { bottom: 96px; right: 26px; } }
 html.com-rosto body { overflow: hidden; }
 .desfazer { position: fixed; left: 50%; bottom: calc(86px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 95; display: flex; gap: 14px; align-items: center;
   background: rgba(5,10,20,.95); border: 1px solid rgba(72,229,255,.5); padding: 10px 14px; font: 400 13px var(--mono); color: var(--tx); }
@@ -613,3 +611,9 @@ html.com-rosto body { overflow: hidden; }
 .rosto-console .holo-0 { top: 8%; } .rosto-console .holo-1 { top: 12%; } .rosto-console .holo-2 { top: 52%; } .rosto-console .holo-3 { top: 56%; }
 .compacto .rosto-dados { display: none; }
 @media (prefers-reduced-motion: reduce) { .holo-dado { animation: none; } }
+/* aviso de microfone bloqueado */
+.aviso-mic { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(86px + env(safe-area-inset-bottom)); z-index: 120; width: min(92vw, 420px);
+  display: grid; gap: 8px; padding: 14px 16px; background: rgba(4,12,22,.97); border: 1px solid rgba(255,179,71,.6); border-radius: 10px;
+  box-shadow: 0 0 30px rgba(0,0,0,.6), 0 0 18px rgba(255,179,71,.2); color: #d8fbff; font: 400 13px/1.45 var(--body, system-ui); animation: holo-entra .4s cubic-bezier(.32,.72,0,1) both; }
+.aviso-mic > b { color: #ffb347; font: 700 14px var(--head); letter-spacing: .1em; text-transform: uppercase; }
+.aviso-mic div { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }

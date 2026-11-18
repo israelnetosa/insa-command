@@ -18,6 +18,19 @@ export function podeOuvir() {
  * Começa a ouvir. Devolve um controle: `parar()` encerra (soltar o botão) e `texto` é uma Promise
  * com a transcrição. `aoParcial(t)` recebe o texto parcial quando o motor oferece.
  */
+/** Android: garante a permissão do microfone antes de ouvir. Bloqueado de vez → erro com codigo 'mic-bloqueado'. */
+export async function garantirMicrofone() {
+  const P = window.Capacitor?.Plugins?.Permissoes;
+  if (!P) return true;                      // navegador/PC ou APK antigo: o próprio sistema pergunta
+  let e = await P.estado().catch(() => null);
+  if (e?.microfone === 'granted') return true;
+  e = await P.pedirMicrofone().catch(() => e);
+  if (e?.microfone === 'granted') return true;
+  const erro = new Error('O Android está bloqueando o microfone do INSA Command. Toque em "Abrir permissões" e ligue o Microfone.');
+  erro.codigo = 'mic-bloqueado'; throw erro;
+}
+export const abrirAjustesApp = () => window.Capacitor?.Plugins?.Permissoes?.abrirAjustes?.();
+
 export function ouvir({ aoParcial, api, auto = false } = {}) {
   const sr = nativo();
   if (sr) return ouvirNativo(sr, aoParcial, auto);
@@ -33,6 +46,7 @@ function ouvirNativo(sr, aoParcial, auto) {
   const acabar = () => { if (fim) return; fim = true; setTimeout(() => { try { ouvinte?.remove?.(); estadoOuv?.remove?.(); } catch {} resolver(ultimo.trim()); }, 300); };
   (async () => {
     try {
+      await garantirMicrofone();
       const perm = await sr.checkPermissions().catch(() => ({ speechRecognition: 'prompt' }));
       if (perm.speechRecognition !== 'granted') {
         const p = await sr.requestPermissions();
@@ -74,6 +88,7 @@ function ouvirGravando(api, auto) {
   const texto = new Promise((ok, erro) => { resolver = ok; rejeitar = erro; });
   const pedacos = [];
   const pronto = (async () => {
+    await garantirMicrofone();
     stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 } });
     const mime = ['audio/webm;codecs=opus', 'audio/ogg;codecs=opus', 'audio/mp4', 'audio/webm'].find(m => MediaRecorder.isTypeSupported?.(m)) || '';
     rec = new MediaRecorder(stream, mime ? { mimeType: mime, audioBitsPerSecond: 32000 } : undefined);

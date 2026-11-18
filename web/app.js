@@ -1,7 +1,7 @@
 // INSA Command · interface (PWA). Sem frameworks, sem rastreadores.
 import { ophanim, ligarOphanim } from './ophanim.js';
 import { paraFala, VOZES_MASCULINAS } from '../src/fala.ts';
-import { ouvir, podeOuvir, interpretar, lerProposta, tirarChamada } from './voz.js';
+import { ouvir, podeOuvir, interpretar, lerProposta, tirarChamada, garantirMicrofone, abrirAjustesApp } from './voz.js';
 import { abrirRosto, rostoAberto, avatarConsole } from './rosto.js';
 import { ligarEscuta } from './escuta.js';
 
@@ -137,15 +137,12 @@ function frame(view, inner) {
   </div>
   <nav class="tabs" aria-label="Seções">${NAV.filter(n => PRINCIPAIS.includes(n[0])).map(([id, , t, i]) => `<a href="#/${id}" class="${view === id ? 'on' : ''}" ${view === id ? 'aria-current="page"' : ''}><i aria-hidden="true">${i}</i>${id === 'manuel' ? 'Manuel' : t}</a>`).join('')}
     <button type="button" class="${PRINCIPAIS.includes(view) ? '' : 'on'}" id="mais" aria-haspopup="dialog" aria-expanded="false"><i aria-hidden="true">☰</i>Mais</button></nav>
-  ${['cockpit', 'posicoes', 'radar'].includes(view) ? '<a class="fab" href="#/registrar" aria-label="Registrar lançamento">＋</a>' : ''}
-  ${view !== 'manuel' && podeOuvir() && pref('mic') ? '<button type="button" class="mic mic-flutua" id="micf" aria-label="Segure para falar com o Manuel" title="Segure para falar com o Manuel">🎙</button>' : ''}
   <div class="folha" id="folha" hidden><div class="folha-fundo" data-fecha></div><div class="folha-painel" role="dialog" aria-label="Mais seções">
     <div class="folha-alca" aria-hidden="true"></div>
     ${NAV.filter(n => !PRINCIPAIS.includes(n[0])).map(([id, , t, i]) => `<a href="#/${id}" class="${view === id ? 'on' : ''}"><i aria-hidden="true">${i}</i>${t}</a>`).join('')}
   </div></div>`;
   const folha = document.getElementById('folha'), mais = document.getElementById('mais');
   const abreFolha = (abrir) => { folha.hidden = !abrir; mais.setAttribute('aria-expanded', String(abrir)); };
-  ligarMic(document.getElementById('micf'));
   if (ESCUTA) indicadorEscuta(ESCUTA.estado);
   document.getElementById('escuta-ind')?.addEventListener('click', () => { setPref('escuta', false); desligarEscuta(); toast('Escuta "Hey Manuel" desligada. Religue em Ajustes → M.A.N.U.E.L.'); });
   mais.onclick = () => abreFolha(folha.hidden);
@@ -489,7 +486,6 @@ function ajustes() {
           <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="pf-rosto" style="width:auto;min-height:0" ${pref('rosto') ? 'checked' : ''}> Rosto do Manuel em tela cheia quando ele fala</label>
           <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="pf-saudacao" style="width:auto;min-height:0" ${pref('saudacao') ? 'checked' : ''}> Cumprimento com o relatório do dia (1 vez por dia, ao abrir)</label>
           <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="pf-escuta" style="width:auto;min-height:0" ${pref('escuta', false) ? 'checked' : ''}> Atender ao "Hey Manuel" com o app aberto (escuta no próprio aparelho; baixa ~31 MB na primeira vez)</label>
-          <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="pf-mic" style="width:auto;min-height:0" ${pref('mic') ? 'checked' : ''} ${podeOuvir() ? '' : 'disabled'}> Botão de microfone nas telas ${podeOuvir() ? '' : '(este aparelho não permite ouvir)'}</label>
           <div class="actions"><button class="btn ghost" id="cfgsave">Salvar configuração</button><button class="btn ghost" id="voztest">Testar voz</button><button class="btn ghost" id="saudtest">Cumprimento agora</button></div></details></div>
       <div class="card"><h2>Backup</h2><p class="muted">${DESK ? 'Seus dados ficam só neste computador. Faça cópias regulares.' : 'Exporta todo o razão, ativos e configuração em JSON.'}</p><div class="actions"><button class="btn ghost" id="exp">Exportar JSON</button>${DESK ? '<button class="btn ghost" id="dbbak">Copiar banco completo</button><button class="btn ghost" id="dbdir">Abrir pasta de dados</button>' : ''}</div></div>
       ${DESK ? `<div class="card"><h2>Nuvem e celular</h2><p class="muted">Envia a sua carteira para a sua nuvem (Cloudflare) e passa a usar os mesmos dados no PC e no celular. Os dados locais ficam guardados como cópia.</p>
@@ -568,7 +564,7 @@ function ajustes() {
     await api('/api/manuel/config', { method: 'POST', body }); toast('Configuração do M.A.N.U.E.L. salva.');
     if (CONV) CONV.config = { ...CONV.config, ...body };
   });
-  for (const k of ['rosto', 'saudacao', 'mic']) document.getElementById('pf-' + k)?.addEventListener('change', (e) => { setPref(k, e.target.checked); toast('Preferência salva neste aparelho.'); });
+  for (const k of ['rosto', 'saudacao']) document.getElementById('pf-' + k)?.addEventListener('change', (e) => { setPref(k, e.target.checked); toast('Preferência salva neste aparelho.'); });
   document.getElementById('pf-escuta')?.addEventListener('change', (e) => {
     setPref('escuta', e.target.checked);
     if (e.target.checked) { ligarEscutaSePreciso(); toast('Escuta ligada. Na primeira vez baixa a voz (~31 MB); depois fica no aparelho.', 6000); }
@@ -976,7 +972,7 @@ function ligarMic(btn) {
     VOZ.ouvindo = sessao;
     const s = sessao;
     s.texto.then((t) => { if (s === sessao) terminar(); processarFala(t); })
-      .catch((e) => { if (s === sessao) terminar(); rostoAberto()?.ouvindo(false); rostoAberto()?.legenda(e.message || 'Falha ao ouvir.'); });
+      .catch((e) => { if (s === sessao) terminar(); erroOuvir(e); });
   };
   const terminar = () => { clearTimeout(tempo); btn.classList.remove('ativo'); sessao = null; VOZ.ouvindo = null; };
   const parar = () => { const s = sessao; if (s) s.parar(); };
@@ -1007,8 +1003,9 @@ function indicadorEscuta(estado, extra) {
 }
 function ligarEscutaSePreciso() {
   if (ESCUTA || !pref('escuta', false) || !(navigator.mediaDevices?.getUserMedia)) return;
+  garantirMicrofone().catch(() => avisoMicrofone());   // Android: pede o microfone antes de a escuta abrir o áudio
   ESCUTA = ligarEscuta({
-    aoEstado: (e, x) => { indicadorEscuta(e, x); if (e === 'erro') toast('Escuta "Hey Manuel": ' + x, 6000); },
+    aoEstado: (e, x) => { indicadorEscuta(e, x); if (e === 'erro') { if (/permiss/i.test(x)) avisoMicrofone(); else toast('Escuta "Hey Manuel": ' + x, 6000); } },
     aoChamar: () => atenderChamada(),
   });
 }
@@ -1020,6 +1017,22 @@ function bip() {
     g.gain.exponentialRampToValueAtTime(0.18, c.currentTime + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + 0.22);
     o.connect(g).connect(c.destination); o.start(); o.stop(c.currentTime + 0.25); setTimeout(() => c.close(), 400); } catch {}
 }
+/* Microfone bloqueado: explica e oferece o atalho para a tela de permissões do Android */
+function erroOuvir(e) {
+  const msg = e?.message || 'Falha ao ouvir.';
+  rostoAberto()?.ouvindo(false); rostoAberto()?.legenda(msg);
+  if (e?.codigo === 'mic-bloqueado' || /permiss/i.test(msg)) avisoMicrofone();
+}
+function avisoMicrofone() {
+  if (document.getElementById('aviso-mic')) return;
+  const d = document.createElement('div');
+  d.id = 'aviso-mic'; d.className = 'aviso-mic'; d.setAttribute('role', 'alertdialog');
+  d.innerHTML = `<b>Microfone sem permissão</b><span>O Manuel precisa do microfone para ouvir. ${window.Capacitor?.Plugins?.Permissoes ? 'Abra as permissões do app e ligue <b>Microfone</b>; depois volte e toque de novo.' : 'Permita o microfone nas configurações do navegador ou do Windows.'}</span>
+    <div>${window.Capacitor?.Plugins?.Permissoes ? '<button type="button" class="btn" id="am-abrir">Abrir permissões</button>' : ''}<button type="button" class="btn ghost" id="am-x">Agora não</button></div>`;
+  document.body.appendChild(d);
+  d.querySelector('#am-abrir')?.addEventListener('click', () => { abrirAjustesApp(); d.remove(); });
+  d.querySelector('#am-x').addEventListener('click', () => d.remove());
+}
 async function atenderChamada() {
   await ESCUTA?.pausar();
   pararFala(); bip(); navigator.vibrate?.(15);
@@ -1028,7 +1041,7 @@ async function atenderChamada() {
   const s = ouvir({ api, auto: true, aoParcial: (t) => rostoAberto()?.ouvindo(true, t) });
   VOZ.ouvindo = s;
   try { const t = await s.texto; VOZ.ouvindo = null; await processarFala(t); }
-  catch (e) { VOZ.ouvindo = null; rostoAberto()?.ouvindo(false); rostoAberto()?.legenda(e.message || 'Falha ao ouvir.'); }
+  catch (e) { VOZ.ouvindo = null; erroOuvir(e); }
   fecharSeOcioso();
 }
 /** Aberto pela escuta: fecha sozinho 15 s depois de terminar de falar, se ninguém mexer. */
