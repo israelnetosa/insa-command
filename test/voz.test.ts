@@ -41,3 +41,13 @@ test('rosto: visemas e humor', () => {
   assert.equal(humor({ variacao_pct: 1 }).nome, 'confiante');
   assert.equal(humor({ ouvindo: true }).nome, 'atento');
 });
+
+test('escuta: só chama com "manuel" e confiança alta', async () => {
+  // @ts-ignore
+  const { ehChamada, GRAMATICA } = await import('../web/escuta.js');
+  assert.ok(GRAMATICA.includes('[unk]') && GRAMATICA.includes('manual'));
+  assert.equal(ehChamada({ text: 'olá manuel', result: [{ word: 'olá', conf: 1 }, { word: 'manuel', conf: 0.97 }] }), true);
+  assert.equal(ehChamada({ text: 'manuel', result: [{ word: 'manuel', conf: 0.5 }] }), false);
+  assert.equal(ehChamada({ text: 'manual' }), false);
+  assert.equal(ehChamada({ text: '[unk]' }), false);
+});

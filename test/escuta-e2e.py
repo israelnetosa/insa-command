@@ -5,6 +5,10 @@ RAIZ = os.path.abspath('.')
 class H(http.server.SimpleHTTPRequestHandler):
     def __init__(s, *a, **k): super().__init__(*a, directory=RAIZ, **k)
     def log_message(s, *a): pass
+    def do_HEAD(s):
+        if s.path.startswith('/vosk/pt.tar.gz'):
+            m = json.load(open('public/vosk/pt/manifesto.json')); s.send_response(200); s.send_header('Content-Length', str(m['tamanho'])); s.end_headers(); return
+        return super().do_HEAD()
     def do_GET(s):
         if s.path.startswith('/vosk/pt.tar.gz'):
             m = json.load(open('public/vosk/pt/manifesto.json'))

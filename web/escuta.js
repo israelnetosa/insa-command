@@ -64,7 +64,12 @@ export function ligarEscuta({ aoChamar, aoEstado, voskJs = '/vendor/vosk.js', mo
     muda('carregando');
     const Vosk = await carregarVosk(voskJs);
     muda('baixando');
-    model = await Vosk.createModel(new URL(modelo, location.href).href);
+    // o motor não avisa quando o download falha: um prazo evita ficar "baixando" para sempre
+    const urlModelo = new URL(modelo, location.href).href;
+    const chk = await fetch(urlModelo, { method: 'HEAD' }).catch(() => null);
+    if (chk && !chk.ok) throw new Error('Modelo de voz indisponível (' + chk.status + ').');
+    model = await Promise.race([Vosk.createModel(urlModelo),
+      new Promise((_, erro) => setTimeout(() => erro(new Error('O download da voz demorou demais. Tente de novo com Wi-Fi.')), 240000))]);
     if (!ativo) { model.terminate(); return; }
     rec = new model.KaldiRecognizer(16000, JSON.stringify(GRAMATICA));
     rec.setWords(true);

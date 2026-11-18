@@ -562,11 +562,13 @@ async function api(req: Request, env: Env, url: URL): Promise<Response> {
   return json({ erro: 'Rota não encontrada.' }, 404);
 }
 
-async function modeloVoz(env: Env, url: URL): Promise<Response> {
+async function modeloVoz(env: Env, url: URL, soCabecalho = false): Promise<Response> {
   const man = await env.ASSETS.fetch(new Request(new URL('/vosk/pt/manifesto.json', url)));
   if (!man.ok) return new Response('Modelo de voz não publicado.', { status: 404 });
   const m: { partes: string[]; tamanho: number; versao: string } = await man.json();
-  const { readable, writable } = new TransformStream();
+  const cab = { 'Content-Type': 'application/gzip', 'Content-Length': String(m.tamanho), 'Cache-Control': 'public, max-age=2592000, immutable', ETag: '"' + m.versao + '"' };
+  if (soCabecalho) return new Response(null, { headers: cab });
+  const { readable, writable } = new FixedLengthStream(m.tamanho);
   (async () => {
     try {
       for (const p of m.partes) {
@@ -577,7 +579,7 @@ async function modeloVoz(env: Env, url: URL): Promise<Response> {
       await writable.close();
     } catch (e) { await writable.abort(e).catch(() => {}); }
   })();
-  return new Response(readable, { headers: { 'Content-Type': 'application/gzip', 'Content-Length': String(m.tamanho), 'Cache-Control': 'public, max-age=2592000, immutable', ETag: '"' + m.versao + '"' } });
+  return new Response(readable, { headers: cab });
 }
 
 export default {
@@ -588,7 +590,7 @@ export default {
       catch (e) { console.error(e); return withHeaders(json({ erro: 'Erro interno.' }, 500), { 'Cache-Control': 'no-store' }); }
     }
     // Modelo de voz da escuta "Hey Manuel": guardado em partes (limite de 25 MB por arquivo) e servido inteiro
-    if (url.pathname === '/vosk/pt.tar.gz' && req.method === 'GET') return withHeaders(await modeloVoz(env, url), {});
+    if (url.pathname === '/vosk/pt.tar.gz' && (req.method === 'GET' || req.method === 'HEAD')) return withHeaders(await modeloVoz(env, url, req.method === 'HEAD'), {});
     const res = await env.ASSETS.fetch(req);
     const extra: Record<string, string> = {};
     // Fontes e ícones podem ficar em cache; HTML, JS e CSS sempre revalidam (atualizações chegam na hora)

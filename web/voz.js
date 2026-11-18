@@ -18,18 +18,19 @@ export function podeOuvir() {
  * Começa a ouvir. Devolve um controle: `parar()` encerra (soltar o botão) e `texto` é uma Promise
  * com a transcrição. `aoParcial(t)` recebe o texto parcial quando o motor oferece.
  */
-export function ouvir({ aoParcial, api } = {}) {
+export function ouvir({ aoParcial, api, auto = false } = {}) {
   const sr = nativo();
-  if (sr) return ouvirNativo(sr, aoParcial);
+  if (sr) return ouvirNativo(sr, aoParcial, auto);
   const W = webSR();
-  if (W) return ouvirWeb(W, aoParcial);
-  return ouvirGravando(api);
+  if (W) return ouvirWeb(W, aoParcial, auto);
+  return ouvirGravando(api, auto);
 }
 
-function ouvirNativo(sr, aoParcial) {
-  let resolver, rejeitar, ultimo = '';
+function ouvirNativo(sr, aoParcial, auto) {
+  let resolver, rejeitar, ultimo = '', fim = false;
   const texto = new Promise((ok, erro) => { resolver = ok; rejeitar = erro; });
-  let ouvinte = null;
+  let ouvinte = null, estadoOuv = null;
+  const acabar = () => { if (fim) return; fim = true; setTimeout(() => { try { ouvinte?.remove?.(); estadoOuv?.remove?.(); } catch {} resolver(ultimo.trim()); }, 300); };
   (async () => {
     try {
       const perm = await sr.checkPermissions().catch(() => ({ speechRecognition: 'prompt' }));
@@ -38,21 +39,21 @@ function ouvirNativo(sr, aoParcial) {
         if (p.speechRecognition !== 'granted') throw new Error('Sem permissão de microfone. Libere em Configurações → Apps → INSA Command → Permissões.');
       }
       ouvinte = await sr.addListener?.('partialResults', (d) => { ultimo = d.matches?.[0] ?? ultimo; aoParcial?.(ultimo); });
+      // modo automático: o próprio Android encerra no silêncio
+      if (auto) estadoOuv = await sr.addListener?.('listeningState', (d) => { if (d?.status === 'stopped') acabar(); });
       const r = await sr.start({ language: 'pt-BR', maxResults: 1, partialResults: true, popup: false });
-      if (r?.matches?.length) ultimo = r.matches[0];
+      if (r?.matches?.length) { ultimo = r.matches[0]; if (auto) acabar(); }
     } catch (e) { rejeitar(e); }
   })();
+  const limite = auto ? setTimeout(() => { try { sr.stop(); } catch {} acabar(); }, 12000) : 0;
   return {
     texto,
-    async parar() {
-      try { await sr.stop(); } catch {}
-      setTimeout(() => { try { ouvinte?.remove?.(); } catch {} resolver(ultimo.trim()); }, 350);
-    },
+    async parar() { clearTimeout(limite); try { await sr.stop(); } catch {} acabar(); },
   };
 }
 
-function ouvirWeb(W, aoParcial) {
-  const rec = new W(); rec.lang = 'pt-BR'; rec.interimResults = true; rec.continuous = true; rec.maxAlternatives = 1;
+function ouvirWeb(W, aoParcial, auto) {
+  const rec = new W(); rec.lang = 'pt-BR'; rec.interimResults = true; rec.continuous = !auto; rec.maxAlternatives = 1;
   let final = '', parcial = '', resolver, rejeitar, acabou = false;
   const texto = new Promise((ok, erro) => { resolver = ok; rejeitar = erro; });
   rec.onresult = (e) => {
@@ -68,8 +69,8 @@ function ouvirWeb(W, aoParcial) {
   return { texto, parar() { try { rec.stop(); } catch {} } };
 }
 
-function ouvirGravando(api) {
-  let resolver, rejeitar, rec = null, stream = null, timer = 0;
+function ouvirGravando(api, auto) {
+  let resolver, rejeitar, rec = null, stream = null, timer = 0, vad = 0, actx = null;
   const texto = new Promise((ok, erro) => { resolver = ok; rejeitar = erro; });
   const pedacos = [];
   const pronto = (async () => {
@@ -78,6 +79,7 @@ function ouvirGravando(api) {
     rec = new MediaRecorder(stream, mime ? { mimeType: mime, audioBitsPerSecond: 32000 } : undefined);
     rec.ondataavailable = (e) => { if (e.data?.size) pedacos.push(e.data); };
     rec.onstop = async () => {
+      clearInterval(vad); actx?.close().catch(() => {});
       stream.getTracks().forEach(t => t.stop());
       try {
         const blob = new Blob(pedacos, { type: rec.mimeType || 'audio/webm' });
@@ -88,7 +90,19 @@ function ouvirGravando(api) {
       } catch (e) { rejeitar(e); }
     };
     rec.start();
-    timer = setTimeout(() => { if (rec?.state === 'recording') rec.stop(); }, 30000);
+    timer = setTimeout(() => { if (rec?.state === 'recording') rec.stop(); }, auto ? 10000 : 30000);
+    if (auto) {   // fim da fala: 1,2 s de silêncio depois de começar a falar
+      actx = new (window.AudioContext || window.webkitAudioContext)();
+      const an = actx.createAnalyser(); an.fftSize = 1024; actx.createMediaStreamSource(stream).connect(an);
+      const buf = new Uint8Array(an.fftSize); let falou = false, quieto = 0, ult = performance.now();
+      vad = setInterval(() => {
+        an.getByteTimeDomainData(buf); let s2 = 0; for (const v of buf) s2 += ((v - 128) / 128) ** 2;
+        const rms = Math.sqrt(s2 / buf.length), agora = performance.now(), dt = agora - ult; ult = agora;
+        if (rms > 0.035) { falou = true; quieto = 0; } else if (falou) quieto += dt;
+        if ((falou && quieto > 1200) || (!falou && agora - t0 > 6000)) { clearInterval(vad); if (rec?.state === 'recording') rec.stop(); }
+      }, 100);
+      const t0 = performance.now();
+    }
   })().catch((e) => rejeitar(e?.name === 'NotAllowedError' ? new Error('Sem permissão de microfone.') : e));
   return { texto, async parar() { await pronto.catch(() => {}); clearTimeout(timer); if (rec?.state === 'recording') rec.stop(); } };
 }

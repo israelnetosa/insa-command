@@ -3,6 +3,7 @@ import { ophanim, ligarOphanim } from './ophanim.js';
 import { paraFala, VOZES_MASCULINAS } from '../src/fala.ts';
 import { ouvir, podeOuvir, interpretar, lerProposta, tirarChamada } from './voz.js';
 import { abrirRosto, rostoAberto } from './rosto.js';
+import { ligarEscuta } from './escuta.js';
 
 const $app = document.getElementById('app');
 const CACHE_KEY = 'insa_state_v1';
@@ -127,6 +128,7 @@ function frame(view, inner) {
   <div class="hudtop" id="hudtop"><header class="top"><a class="brand" href="#/cockpit" aria-label="INSA Command, início">${EMBLEM}<span><b>INSA</b><small>Command</small></span></a>
     <span class="sys"><i class="dot on"></i>Sistemas online</span>
     <span class="feed" id="pgst" title="${esc(feed.title)}"><i class="dot ${feed.cls}"></i><span>${esc(feed.label)}</span></span>
+    <button type="button" class="escuta-ind" id="escuta-ind" ${ESCUTA ? '' : 'hidden'} data-estado="${ESCUTA?.estado || 'pausada'}"><i></i><span>escuta</span></button>
     <div class="clock"><b id="clk">--:--:--</b><small id="clkd"></small></div></header>${fita()}</div>
   <div class="shell">
     <nav class="side" aria-label="Seções">${NAV.map(([id, n, t, i]) => `<a href="#/${id}" class="${view === id ? 'on' : ''}" ${view === id ? 'aria-current="page"' : ''}><span>${n}</span><i aria-hidden="true">${i}</i><b>${t}</b></a>`).join('')}</nav>
@@ -144,6 +146,8 @@ function frame(view, inner) {
   const folha = document.getElementById('folha'), mais = document.getElementById('mais');
   const abreFolha = (abrir) => { folha.hidden = !abrir; mais.setAttribute('aria-expanded', String(abrir)); };
   ligarMic(document.getElementById('micf'));
+  if (ESCUTA) indicadorEscuta(ESCUTA.estado);
+  document.getElementById('escuta-ind')?.addEventListener('click', () => { setPref('escuta', false); desligarEscuta(); toast('Escuta "Hey Manuel" desligada. Religue em Ajustes → M.A.N.U.E.L.'); });
   mais.onclick = () => abreFolha(folha.hidden);
   folha.addEventListener('click', (e) => { if (e.target.closest('[data-fecha], a')) abreFolha(false); });
   tick();
@@ -484,6 +488,7 @@ function ajustes() {
           <div class="kv" style="margin-top:10px"><b>Neste aparelho</b></div>
           <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="pf-rosto" style="width:auto;min-height:0" ${pref('rosto') ? 'checked' : ''}> Rosto do Manuel em tela cheia quando ele fala</label>
           <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="pf-saudacao" style="width:auto;min-height:0" ${pref('saudacao') ? 'checked' : ''}> Cumprimento com o relatório do dia (1 vez por dia, ao abrir)</label>
+          <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="pf-escuta" style="width:auto;min-height:0" ${pref('escuta', false) ? 'checked' : ''}> Atender ao "Hey Manuel" com o app aberto (escuta no próprio aparelho; baixa ~31 MB na primeira vez)</label>
           <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="pf-mic" style="width:auto;min-height:0" ${pref('mic') ? 'checked' : ''} ${podeOuvir() ? '' : 'disabled'}> Botão de microfone nas telas ${podeOuvir() ? '' : '(este aparelho não permite ouvir)'}</label>
           <div class="actions"><button class="btn ghost" id="cfgsave">Salvar configuração</button><button class="btn ghost" id="voztest">Testar voz</button><button class="btn ghost" id="saudtest">Cumprimento agora</button></div></details></div>
       <div class="card"><h2>Backup</h2><p class="muted">${DESK ? 'Seus dados ficam só neste computador. Faça cópias regulares.' : 'Exporta todo o razão, ativos e configuração em JSON.'}</p><div class="actions"><button class="btn ghost" id="exp">Exportar JSON</button>${DESK ? '<button class="btn ghost" id="dbbak">Copiar banco completo</button><button class="btn ghost" id="dbdir">Abrir pasta de dados</button>' : ''}</div></div>
@@ -564,6 +569,11 @@ function ajustes() {
     if (CONV) CONV.config = { ...CONV.config, ...body };
   });
   for (const k of ['rosto', 'saudacao', 'mic']) document.getElementById('pf-' + k)?.addEventListener('change', (e) => { setPref(k, e.target.checked); toast('Preferência salva neste aparelho.'); });
+  document.getElementById('pf-escuta')?.addEventListener('change', (e) => {
+    setPref('escuta', e.target.checked);
+    if (e.target.checked) { ligarEscutaSePreciso(); toast('Escuta ligada. Na primeira vez baixa a voz (~31 MB); depois fica no aparelho.', 6000); }
+    else { desligarEscuta(); toast('Escuta desligada.'); }
+  });
   document.getElementById('saudtest')?.addEventListener('click', () => saudacaoDiaria(true));
   // vozes instaladas no aparelho (pt-BR); a escolha fica guardada só neste aparelho
   const vozap = document.getElementById('vozap');
@@ -893,7 +903,8 @@ function estadoHumor() {
   return { variacao_pct: base ? (t.resultado_dia || 0) / base * 100 : 0, alertas: (S?.alertas || []).length };
 }
 function abrirRostoManuel() {
-  return abrirRosto({ estado: estadoHumor(), aoFechar: () => { pararFala(); VOZ.ouvindo?.parar(); VOZ.ouvindo = null; }, aoMicrofone: podeOuvir() ? (b) => ligarMic(b) : null });
+  ESCUTA?.pausar();
+  return abrirRosto({ estado: estadoHumor(), aoFechar: () => { pararFala(); VOZ.ouvindo?.parar(); VOZ.ouvindo = null; clearTimeout(VOZ.ocioso); setTimeout(retomarEscuta, 600); }, aoMicrofone: podeOuvir() ? (b) => ligarMic(b) : null });
 }
 const ehLongo = (t) => String(t || '').length > 420;
 async function processarFala(falado) {
@@ -904,7 +915,7 @@ async function processarFala(falado) {
   if (a.tipo === 'nada') return;
   if (a.tipo === 'parar') { pararFala(); r.fechar(); return; }
   if (a.tipo === 'limpar') { limparConversa(); falar('Conversa limpa, Comandante.', null, { tela: true }); return; }
-  if (a.tipo === 'perguntar') { VOZ.aguardando = a.aguardar; falar(a.fala, null, { tela: true }); return; }
+  if (a.tipo === 'perguntar') { VOZ.aguardando = a.aguardar; falar(a.fala, null, { tela: true }); if (ESCUTA && (a.aguardar || a.fala.startsWith('Às suas ordens'))) ouvirDepoisDeFalar(); return; }
   if (a.tipo === 'confirmar' || a.tipo === 'recusar') {
     const p = VOZ.prop; VOZ.prop = null;
     try {
@@ -919,10 +930,27 @@ async function processarFala(falado) {
   try {
     const res = await api('/api/manuel/mensagem', { method: 'POST', body: { texto: a.texto } });
     const pend = (res.propostas || []).find(p => p.status === 'pendente');
-    if (pend) { VOZ.prop = pend; falar(lerProposta(pend, brl), null, { tela: true }); r.legenda(lerProposta(pend, brl)); }
+    if (pend) { VOZ.prop = pend; falar(lerProposta(pend, brl), null, { tela: true }); r.legenda(lerProposta(pend, brl)); if (ESCUTA) ouvirDepoisDeFalar(); }
     else { falar(ehLongo(res.texto) ? res.texto.slice(0, 900) : res.texto, null, { tela: true }); r.legenda(res.texto); }
     atualizarConsole();
   } catch (e) { holoEstado(null); falar('Falha: ' + e.message, null, { tela: true }); }
+}
+/** Conversa por voz sem tocar: quando o Manuel termina a pergunta, abre o microfone de novo uma vez. */
+function ouvirDepoisDeFalar() {
+  const esperar = () => {
+    const falando = (AUDIO && !AUDIO.paused) || (('speechSynthesis' in window) && speechSynthesis.speaking);
+    if (falando) return setTimeout(esperar, 250);
+    if (!rostoAberto() || VOZ.ouvindo) return;
+    setTimeout(async () => {
+      const r = rostoAberto(); if (!r) return;
+      r.ouvindo(true, '');
+      const s = ouvir({ api, auto: true, aoParcial: (t) => rostoAberto()?.ouvindo(true, t) }); VOZ.ouvindo = s;
+      try { const t = await s.texto; VOZ.ouvindo = null; if (t) await processarFala(t); else rostoAberto()?.ouvindo(false); }
+      catch { VOZ.ouvindo = null; rostoAberto()?.ouvindo(false); }
+      fecharSeOcioso();
+    }, 350);
+  };
+  setTimeout(esperar, 600);
 }
 function atualizarConsole() { if ((location.hash.slice(2) || '').split('?')[0] === 'manuel') manuel().catch(() => {}); }
 
@@ -930,9 +958,10 @@ function atualizarConsole() { if ((location.hash.slice(2) || '').split('?')[0] =
 function ligarMic(btn) {
   if (!btn || btn._insaMic) return; btn._insaMic = true;
   let inicio = 0, sessao = null, curto = false, tempo = 0;
-  const comecar = () => {
+  const comecar = async () => {
     if (sessao) return;
     pararFala();
+    await ESCUTA?.pausar();
     const r = rostoAberto() ?? abrirRostoManuel();
     r.ouvindo(true, '');
     btn.classList.add('ativo'); navigator.vibrate?.(10);
@@ -959,6 +988,54 @@ function ligarMic(btn) {
   btn.addEventListener('pointerup', soltar); btn.addEventListener('pointercancel', soltar);
   btn.addEventListener('click', (e) => e.stopPropagation());
 }
+
+// ───────── "Hey Manuel": escuta contínua no aparelho (opcional) ─────────
+let ESCUTA = null;
+function indicadorEscuta(estado, extra) {
+  const el = document.getElementById('escuta-ind'); if (!el) return;
+  el.hidden = !ESCUTA;
+  el.dataset.estado = estado;
+  el.querySelector('span').textContent = { ouvindo: 'ouvindo "Manuel"', pausada: 'escuta pausada', baixando: 'baixando voz…', carregando: 'iniciando escuta…', erro: 'escuta com erro' }[estado] || estado;
+  el.title = estado === 'erro' ? String(extra || '') : 'Toque para desligar a escuta';
+}
+function ligarEscutaSePreciso() {
+  if (ESCUTA || !pref('escuta', false) || !(navigator.mediaDevices?.getUserMedia)) return;
+  ESCUTA = ligarEscuta({
+    aoEstado: (e, x) => { indicadorEscuta(e, x); if (e === 'erro') toast('Escuta "Hey Manuel": ' + x, 6000); },
+    aoChamar: () => atenderChamada(),
+  });
+}
+function desligarEscuta() { ESCUTA?.desligar(); ESCUTA = null; indicadorEscuta('pausada'); }
+function retomarEscuta() { if (ESCUTA && !rostoAberto() && !VOZ.ouvindo && document.visibilityState === 'visible') ESCUTA.retomar(); }
+function bip() {
+  try { const c = new (window.AudioContext || window.webkitAudioContext)(); const o = c.createOscillator(), g = c.createGain();
+    o.frequency.value = 880; o.frequency.setValueAtTime(1320, c.currentTime + 0.08); g.gain.setValueAtTime(0.0001, c.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.18, c.currentTime + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + 0.22);
+    o.connect(g).connect(c.destination); o.start(); o.stop(c.currentTime + 0.25); setTimeout(() => c.close(), 400); } catch {}
+}
+async function atenderChamada() {
+  await ESCUTA?.pausar();
+  pararFala(); bip(); navigator.vibrate?.(15);
+  const r = rostoAberto() ?? abrirRostoManuel();
+  r.ouvindo(true, 'Às ordens, Comandante.');
+  const s = ouvir({ api, auto: true, aoParcial: (t) => rostoAberto()?.ouvindo(true, t) });
+  VOZ.ouvindo = s;
+  try { const t = await s.texto; VOZ.ouvindo = null; await processarFala(t); }
+  catch (e) { VOZ.ouvindo = null; rostoAberto()?.ouvindo(false); rostoAberto()?.legenda(e.message || 'Falha ao ouvir.'); }
+  fecharSeOcioso();
+}
+/** Aberto pela escuta: fecha sozinho 15 s depois de terminar de falar, se ninguém mexer. */
+function fecharSeOcioso() {
+  clearTimeout(VOZ.ocioso);
+  const checar = () => {
+    const r = rostoAberto(); if (!r) return;
+    const falando = (AUDIO && !AUDIO.paused) || (('speechSynthesis' in window) && speechSynthesis.speaking) || VOZ.ouvindo;
+    if (falando || VOZ.aguardando || VOZ.prop) { VOZ.ocioso = setTimeout(checar, 3000); return; }
+    r.fechar();
+  };
+  VOZ.ocioso = setTimeout(checar, 15000);
+}
+document.addEventListener('visibilitychange', () => { if (!ESCUTA) return; if (document.hidden) ESCUTA.pausar(); else retomarEscuta(); });
 
 const MOTIVACAO = [
   'Cada cota comprada hoje é um soldado que trabalha para o Senhor todos os meses.',
@@ -1108,6 +1185,7 @@ async function route(view) {
     await ({ cockpit, manuel, radar, posicoes, registrar: () => registrar(new URLSearchParams(q || '')), estrategia, razao, plano, ajustes, migracao })[v]();
     window.scrollTo(0, 0);
     if (!SAUDOU && !offline) { SAUDOU = true; setTimeout(() => saudacaoDiaria(), 700); }
+    ligarEscutaSePreciso();
   } catch (e) { if (e.message !== 'Sessão expirada.') $app.innerHTML = `<div class="gate"><div class="card"><h2>Falha ao carregar</h2><p class="muted">${esc(e.message)}</p><div class="actions" style="justify-content:center"><button class="btn" id="retry">Tentar de novo</button></div></div></div>`; document.getElementById('retry')?.addEventListener('click', () => location.reload()); }
 }
 window.addEventListener('hashchange', () => { if (S || offline) route(); });
