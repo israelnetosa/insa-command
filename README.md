@@ -22,6 +22,7 @@ Centro de comando **privado** da carteira INSA Dividend Army. É a sucessora do 
 - **Expressões de verdade:** a cabeça tem 52 expressões (padrão ARKit). A boca usa abrir mandíbula, arredondar, franzir e esticar conforme o visema e o volume da voz; sobrancelhas, sorriso, piscadas e olhar vêm do humor do dia e do dedo/mouse.
 - **Por camadas:** aparelho forte (ex.: S24 Ultra) com brilho (bloom) e mais partículas; médio sem brilho; fraco ou "reduzir movimento" fica no rosto de fios 2D. Enquanto o 3D carrega, o 2D aparece.
 - **2.5.1 · energia:** plexo ~4× mais denso (malha subdividida que mantém as expressões), brasas subindo dos olhos âmbar, rosto se desfazendo em faíscas pelas laterais, rastros rápidos de luz, cometas dourados com cauda nos anéis, brilho volumétrico atrás da cabeça e telemetria holográfica real ao fundo (patrimônio, caixa, ativos, zona e variação do dia).
+- **2.5.2 · como no conceito:** íris âmbar com pupila escura, fibras e reflexo (sem estourar), pescoço e ombros em malha de plexo que some para baixo, anéis dourados com linha nítida além das partículas, mais contraste (menos bloom) e botão em degradê com ícone de microfone.
 - Créditos: cabeça de exemplo "facecap" do three.js (Face Cap, Bannaflak), sem texturas.
 
 ## Novidades da 2.4 · "Hey Manuel"

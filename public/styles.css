@@ -537,7 +537,7 @@ button, a, input, select, textarea, label { touch-action: manipulation; -webkit-
 .rosto-legenda { margin: 0; max-width: 680px; max-height: 26vh; overflow: auto; text-align: center; font: 500 clamp(15px, 4.2vw, 19px)/1.45 var(--body, system-ui); color: #e6fbff; text-shadow: 0 0 12px rgba(72,229,255,.35); }
 .rosto-legenda:empty { display: none; }
 .rosto-mic, .mic { user-select: none; -webkit-user-select: none; touch-action: none; cursor: pointer; }
-.rosto-mic { font: 600 14px var(--head); letter-spacing: .12em; text-transform: uppercase; color: #02070c; background: #48e5ff; border: 0; padding: 14px 26px; border-radius: 999px; box-shadow: 0 0 22px rgba(72,229,255,.45); }
+.rosto-mic { display: inline-flex; align-items: center; gap: 10px; font: 700 14px var(--head); letter-spacing: .14em; text-transform: uppercase; color: #02121c; background: linear-gradient(90deg, #5ff6ff, #22c8ff 55%, #1a9dff); border: 0; padding: 15px 30px; border-radius: 999px; box-shadow: 0 0 26px rgba(72,229,255,.5), inset 0 1px 0 rgba(255,255,255,.5); }
 .rosto-mic.ativo, .mic.ativo { background: #34f5a4; box-shadow: 0 0 0 6px rgba(52,245,164,.18), 0 0 26px rgba(52,245,164,.55); }
 .mic { display: inline-grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; border: 1px solid rgba(72,229,255,.55); background: rgba(5,10,20,.7); color: #a5f3fc; font-size: 18px; }
 .mic-flutua { position: fixed; z-index: 30; right: 16px; bottom: calc(150px + env(safe-area-inset-bottom)); width: 54px; height: 54px; font-size: 22px; box-shadow: 0 0 18px rgba(72,229,255,.3); }

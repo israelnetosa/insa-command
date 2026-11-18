@@ -55,6 +55,19 @@ function corPorDensidade(geo, cor) {
   geo.setAttribute('color', new THREE.BufferAttribute(cores, 3));
 }
 
+function texturaIris() {
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const g = c.getContext('2d'), gr = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  gr.addColorStop(0, 'rgba(10,3,0,1)'); gr.addColorStop(0.2, 'rgba(25,8,0,1)');            // pupila
+  gr.addColorStop(0.26, 'rgba(255,214,140,1)'); gr.addColorStop(0.45, 'rgba(255,150,40,1)'); // anel incandescente
+  gr.addColorStop(0.7, 'rgba(200,80,10,0.9)'); gr.addColorStop(0.86, 'rgba(120,40,5,0.55)'); gr.addColorStop(1, 'rgba(60,20,0,0)');
+  g.fillStyle = gr; g.beginPath(); g.arc(64, 64, 64, 0, Math.PI * 2); g.fill();
+  g.globalCompositeOperation = 'lighter'; g.strokeStyle = 'rgba(255,190,90,0.35)'; g.lineWidth = 1.2;   // fibras da íris
+  for (let i = 0; i < 48; i++) { const a = i / 48 * Math.PI * 2; g.beginPath(); g.moveTo(64 + Math.cos(a) * 16, 64 + Math.sin(a) * 16); g.lineTo(64 + Math.cos(a + 0.08) * 46, 64 + Math.sin(a + 0.08) * 46); g.stroke(); }
+  g.globalCompositeOperation = 'source-over'; g.fillStyle = 'rgba(255,245,220,0.9)'; g.beginPath(); g.arc(54, 52, 5, 0, Math.PI * 2); g.fill();   // reflexo
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+
 function texturaPonto() {
   const c = document.createElement('canvas'); c.width = c.height = 64;
   const g = c.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
@@ -94,7 +107,7 @@ export async function criar(canvas, { forte = true, modelo = '/modelos/manuel.gl
   cabeca.material = new THREE.MeshBasicMaterial({ color: 0x020c14, transparent: true, opacity: 0.94, polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 2 });
   cabeca.renderOrder = 0;
   // 2. malha de fios
-  const OP_FIOS = forte ? 0.2 : 0.34, OP_NOS = forte ? 0.55 : 0.9;
+  const OP_FIOS = forte ? 0.3 : 0.34, OP_NOS = forte ? 0.5 : 0.9;
   const fios = new THREE.Mesh(cabeca.geometry, new THREE.MeshBasicMaterial({ color: CIANO, wireframe: true, transparent: true, opacity: OP_FIOS, blending: THREE.AdditiveBlending, depthWrite: false }));
   fios.morphTargetInfluences = cabeca.morphTargetInfluences; fios.morphTargetDictionary = cabeca.morphTargetDictionary; fios.renderOrder = 2;
   cabeca.parent.add(fios); fios.position.copy(cabeca.position); fios.quaternion.copy(cabeca.quaternion); fios.scale.copy(cabeca.scale);
@@ -111,33 +124,44 @@ export async function criar(canvas, { forte = true, modelo = '/modelos/manuel.gl
     o.traverse((m) => { if (m.isMesh) { m.material = new THREE.MeshBasicMaterial({ color: new THREE.Color('#c25a08'), transparent: true, opacity: 0.95 }); m.renderOrder = 1; } });
     const bx = new THREE.Box3().setFromObject(o), c = bx.getCenter(new THREE.Vector3()), r = bx.getSize(new THREE.Vector3()).x / 2;
     const frente = grupoCabeca.worldToLocal(new THREE.Vector3(c.x, c.y, bx.max.z));
-    for (const [tam, cor, op] of [[r * 3.2, new THREE.Color('#ff7a10'), 0.55], [r * 1.4, new THREE.Color('#ffa63d'), 0.75], [r * 0.4, new THREE.Color('#fff1c9'), 0.7]]) {
-      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: ponto, color: cor, transparent: true, opacity: op, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false }));
+    const iris = texturaIris();
+    for (const [tam, cor, op, mapa, normal] of [[r * 3, new THREE.Color('#ff7a10'), 0.38, ponto, false], [r * 1.25, new THREE.Color('#ffffff'), 1, iris, true]]) {
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: mapa, color: cor, transparent: true, opacity: op, blending: normal ? THREE.NormalBlending : THREE.AdditiveBlending, depthWrite: false, depthTest: false }));
       sp.scale.setScalar(tam); sp.position.copy(frente); sp.position.z += r * 0.2; sp.renderOrder = 6; sp.userData.op = op; sp.userData.base = frente.clone();
       grupoCabeca.add(sp); brilhosOlho.push(sp);
     }
   }
-  // busto (pescoço e ombros) em nuvem de pontos
+  // busto (pescoço e ombros) em malha de plexo: superfície em grade com nós, fios e diagonais; some para baixo
   const busto = (() => {
-    const n = forte ? 4200 : 2200, pos = new Float32Array(n * 3), cor = new Float32Array(n * 3);
-    for (let i = 0; i < n; i++) {
-      const t = Math.random();
-      let x, y, z;
-      if (t < 0.2) {   // pescoço: sai de baixo do queixo e alarga um pouco
-        const a = Math.random() * Math.PI * 2, h = Math.random() ** 0.8, r = 0.3 + h * 0.1;
-        x = Math.cos(a) * r; z = Math.sin(a) * r * 0.8 - 0.18; y = -0.78 - h * 0.62;
-      } else {          // ombros (trapézio caído) e peito, mais denso na borda de cima
-        const lado = Math.random() < 0.5 ? -1 : 1, u = Math.random(), ax = Math.pow(Math.random(), 0.7) * 1.75;
-        const topo = -1.32 - 0.42 * Math.pow(ax / 1.75, 1.6) + (ax < 0.4 ? (0.4 - ax) * 0.25 : 0);
-        x = lado * ax; y = topo - Math.pow(u, 1.8) * 1.3; z = (Math.random() - 0.5) * 0.5 * (1 - ax / 2.2) - 0.15;
-      }
-      pos[i * 3] = x + (Math.random() - 0.5) * 0.02; pos[i * 3 + 1] = y; pos[i * 3 + 2] = z;
-      const v = Math.max(0.05, Math.min(1, 1.15 - (-y - 0.9) * 0.55)) * (0.6 + Math.random() * 0.4) * (1 - Math.min(0.7, Math.abs(x) / 2.6));
-      cor[i * 3] = CIANO.r * v; cor[i * 3 + 1] = CIANO.g * v; cor[i * 3 + 2] = CIANO.b * v;
+    const NU = forte ? 64 : 40, NV = forte ? 30 : 20, pts = [], cores = [], fios = [];
+    // superfície: v = 0 sob o queixo → 1 no peito; u = volta ao redor (só a frente e os lados)
+    const sup = (u, v) => {
+      const a = (u - 0.5) * Math.PI * 1.2;                         // frente e lados
+      const k = Math.max(0, (v - 0.3) / 0.7);                      // 0 no pescoço → 1 no peito
+      const larg = 0.29 + v * 0.1 + Math.pow(k, 0.75) * 1.4;      // pescoço fino, ombros largos
+      const prof = 0.24 + k * 0.3;
+      const y = -0.62 - v * 1.4 - k * Math.pow(Math.abs(Math.sin(a)), 1.4) * 0.45;
+      return [Math.sin(a) * larg, y, Math.cos(a) * prof - 0.22];
+    };
+    const idx = (i2, j2) => j2 * (NU + 1) + i2;
+    for (let j2 = 0; j2 <= NV; j2++) for (let i2 = 0; i2 <= NU; i2++) {
+      const jit = () => (Math.random() - 0.5) * 0.012;
+      const [x, y, z] = sup(i2 / NU, j2 / NV); pts.push(x + jit(), y + jit(), z + jit());
+      const vv = j2 / NV, f = 0.55 * Math.min(1, vv / 0.15 + 0.2) * Math.pow(1 - vv, 1.5) * (1 - Math.pow(Math.abs(i2 / NU - 0.5) * 2, 3) * 0.7);
+      cores.push(CIANO.r * f, CIANO.g * f, CIANO.b * f);
     }
-    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.BufferAttribute(cor, 3));
-    const p = new THREE.Points(g, new THREE.PointsMaterial({ vertexColors: true, size: forte ? 2.2 : 2.2, sizeAttenuation: false, map: ponto, transparent: true, opacity: 0.75, blending: THREE.AdditiveBlending, depthWrite: false }));
-    return p;
+    for (let j2 = 0; j2 <= NV; j2++) for (let i2 = 0; i2 <= NU; i2++) {
+      if (i2 < NU) fios.push(idx(i2, j2), idx(i2 + 1, j2));
+      if (j2 < NV) fios.push(idx(i2, j2), idx(i2, j2 + 1));
+      if (i2 < NU && j2 < NV) fios.push((i2 + j2) % 2 ? idx(i2, j2) : idx(i2 + 1, j2), (i2 + j2) % 2 ? idx(i2 + 1, j2 + 1) : idx(i2, j2 + 1));
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(cores, 3)); g.setIndex(fios);
+    const grupo = new THREE.Group();
+    const linhas = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.32, blending: THREE.AdditiveBlending, depthWrite: false }));
+    const nosB = new THREE.Points(g, new THREE.PointsMaterial({ vertexColors: true, size: forte ? 2.4 : 2.2, sizeAttenuation: false, map: ponto, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false }));
+    grupo.add(linhas, nosB); grupo.material = { set opacity(v) { linhas.material.opacity = 0.32 * v / 0.75; nosB.material.opacity = 0.85 * v / 0.75; } };
+    return grupo;
   })();
   cena.add(busto);
 
@@ -153,10 +177,13 @@ export async function criar(canvas, { forte = true, modelo = '/modelos/manuel.gl
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.BufferAttribute(cores, 3));
     const pts = new THREE.Points(g, new THREE.PointsMaterial({ size: tam, sizeAttenuation: false, map: ponto, vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
     const grupo = new THREE.Group(); grupo.add(pts); grupo.rotation.set(inclX, 0, inclZ); cena.add(grupo);
+    const curva = []; for (let i = 0; i <= 256; i++) { const a = (i / 256) * Math.PI * 2; curva.push(new THREE.Vector3(Math.cos(a) * raio, 0, Math.sin(a) * raio * ry)); }
+    const linha = new THREE.Line(new THREE.BufferGeometry().setFromPoints(curva), new THREE.LineBasicMaterial({ color: cor, transparent: true, opacity: cor === CIANO ? 0.3 : 0.9, blending: THREE.AdditiveBlending, depthWrite: false }));
+    grupo.add(linha); grupo.userData.linha = linha;
     aneis.push({ grupo, pts, cores, fase, cor, vel, n, brilho, raio });
   };
   criarAnel(1.32, 1, OURO, forte ? 1300 : 700, 1.12, 0.38, 0.18, forte ? 2.8 : 2.4);
-  criarAnel(1.22, 1, OURO, forte ? 900 : 500, 0.22, -0.16, -0.13, forte ? 2.6 : 2.2, 0.8);   // quase de lado: menos brilho por ponto
+  criarAnel(1.25, 1, OURO, forte ? 900 : 500, 0.3, -0.22, -0.13, forte ? 2.6 : 2.2, 0.8);   // quase de lado: menos brilho por ponto
   criarAnel(1.6, 1, CIANO, forte ? 320 : 220, 1.05, -0.2, 0.08, forte ? 1.8 : 1.6);
 
   // poeira de dados flutuando
@@ -175,7 +202,7 @@ export async function criar(canvas, { forte = true, modelo = '/modelos/manuel.gl
   };
   // brasas subindo dos olhos
   const brasas = pool(forte ? 60 : 30, forte ? 2.4 : 2.2, AMBAR);
-  const olhosPos = brilhosOlho.filter((_, i) => i % 3 === 0).map(b => b.userData.base);
+  const olhosPos = brilhosOlho.filter((_, i) => i % 2 === 0).map(b => b.userData.base);
   grupoCabeca.add(brasas.pts);
   // faíscas soltando do rosto (desintegração), mais pela lateral e por cima
   const faiscas = pool(forte ? 700 : 260, forte ? 2.2 : 2, CIANO_CLARO);
@@ -210,7 +237,7 @@ export async function criar(canvas, { forte = true, modelo = '/modelos/manuel.gl
   if (forte) {
     composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(cena, camera));
-    bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.55, 0.35, 0.62);
+    bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.42, 0.3, 0.72);
     composer.addPass(bloom); composer.addPass(new OutputPass());
   }
 
@@ -224,7 +251,7 @@ export async function criar(canvas, { forte = true, modelo = '/modelos/manuel.gl
       camera.aspect = w / h;
       // enquadramento: cabeça no terço de cima, ombros entrando por baixo; no celular em pé, um pouco mais perto
       const retrato = h > w;
-      camera.fov = retrato ? 34 : 26; camera.position.set(0, retrato ? -0.3 : -0.3, retrato ? 6.5 : 6.2); camera.lookAt(0, retrato ? -0.42 : -0.4, 0);
+      camera.fov = retrato ? 34 : 26; camera.position.set(0, retrato ? -0.3 : -0.3, retrato ? 6.9 : 6.2); camera.lookAt(0, retrato ? -0.48 : -0.42, 0);
       camera.updateProjectionMatrix();
       composer?.setSize(w, h); composer?.setPixelRatio(dpr); bloom?.setSize(w * dpr, h * dpr);
     },
@@ -324,13 +351,14 @@ export async function criar(canvas, { forte = true, modelo = '/modelos/manuel.gl
         }
         pc.g.attributes.position.needsUpdate = pc.g.attributes.color.needsUpdate = true;
       }
+      for (const a of aneis) { const l = a.grupo.userData.linha; if (l) l.material.opacity = (a.cor === CIANO ? 0.3 : 0.9) * fade * (falando ? 1 + som * 0.4 : 1); }
       halo.material.opacity = (0.45 + (falando ? som * 0.35 : 0) + (ouvindo ? 0.1 : 0)) * fade;
       // ── poeira subindo devagar ──
       const pp = gPo.attributes.position.array;
       for (let i = 0; i < nPo; i++) { pp[i * 3 + 1] += velPo[i] * dt; if (pp[i * 3 + 1] > 2.3) pp[i * 3 + 1] = -2.3; pp[i * 3] += Math.sin(T * 0.3 + i) * 0.0008; }
       gPo.attributes.position.needsUpdate = true;
       poeira.material.opacity = 0.6 * fade;
-      if (bloom) bloom.strength = 0.55 + (falando ? som * 0.3 : 0);
+      if (bloom) bloom.strength = 0.42 + (falando ? som * 0.25 : 0);
       if (composer) composer.render(); else renderer.render(cena, camera);
     },
     liberar() {

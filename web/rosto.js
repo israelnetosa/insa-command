@@ -165,7 +165,7 @@ export function abrirRosto({ estado = {}, aoFechar, aoMicrofone, telemetria = []
     <div class="rosto-topo"><span class="rosto-nome">M.A.N.U.E.L.</span><span class="rosto-estado" id="rosto-estado">em linha</span>
       <button type="button" class="rosto-x" aria-label="Fechar">✕</button></div>
     <div class="rosto-baixo"><p class="rosto-legenda" id="rosto-leg" aria-live="polite"></p>
-      ${aoMicrofone ? '<button type="button" class="rosto-mic" id="rosto-mic" aria-label="Segure para falar">🎙 segure para falar</button>' : ''}</div>`;
+      ${aoMicrofone ? '<button type="button" class="rosto-mic" id="rosto-mic" aria-label="Segure para falar"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 15a3.5 3.5 0 0 0 3.5-3.5v-6a3.5 3.5 0 1 0-7 0v6A3.5 3.5 0 0 0 12 15zm6-3.5a1 1 0 1 1 2 0 8 8 0 0 1-7 7.94V21h3a1 1 0 1 1 0 2H8a1 1 0 1 1 0-2h3v-1.56A8 8 0 0 1 4 11.5a1 1 0 1 1 2 0 6 6 0 0 0 12 0z"/></svg>segure para falar</button>' : ''}</div>`;
   document.body.appendChild(el);
   document.documentElement.classList.add('com-rosto');
   const cv = el.querySelector('canvas.rosto-cv:not(.rosto-cv3d)'), ctx = cv.getContext('2d', { alpha: true, desynchronized: true });
