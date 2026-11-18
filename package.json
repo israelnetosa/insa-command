@@ -1,7 +1,7 @@
 {
   "name": "insa-command",
   "productName": "INSA Command",
-  "version": "2.7.2",
+  "version": "2.7.3",
   "description": "Centro de comando privado da carteira INSA Dividend Army",
   "author": "Israel",
   "license": "UNLICENSED",
@@ -26,6 +26,7 @@
   },
   "dependencies": {
     "@capacitor-community/speech-recognition": "7.0.1",
+    "@capacitor-community/text-to-speech": "8.0.2",
     "electron-updater": "^6.8.11",
     "three": "0.187.0",
     "vosk-browser": "0.0.8"

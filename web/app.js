@@ -869,7 +869,40 @@ function falar(texto, botao, { tela = false } = {}) {
   falarAparelho(limpo);
 }
 // Voz do aparelho: uma fala só (sem picotar por linha), voz masculina pt-BR quando existir, ritmo natural
+/* Android: o WebView não tem voz (speechSynthesis fica mudo), então fala pelo motor de voz do próprio telemóvel */
+let FALANDO_NATIVO = false;
+const TTS_NATIVO = () => window.Capacitor?.Plugins?.TextToSpeech ?? null;
+let VOZ_NATIVA = null;   // índice da voz pt-BR escolhida (masculina, se houver)
+async function vozNativa(T) {
+  if (VOZ_NATIVA != null) return VOZ_NATIVA;
+  try {
+    const { voices = [] } = await T.getSupportedVoices();
+    const pt = voices.map((v, i) => ({ v, i })).filter(({ v }) => /^pt[-_]BR/i.test(v.lang));
+    const m = pt.find(({ v }) => /ptd|male|masc/i.test(v.name + v.voiceURI) && !/female/i.test(v.name + v.voiceURI)) || pt.find(({ v }) => v.localService) || pt[0];
+    VOZ_NATIVA = m ? m.i : -1;
+  } catch { VOZ_NATIVA = -1; }
+  return VOZ_NATIVA;
+}
+async function falarNativo(T, texto) {
+  const minha = FALA_GERACAO;
+  let ouvinte = null, marcou = false;
+  try {
+    ouvinte = await T.addListener?.('onRangeStart', (i) => { marcou = true; rostoAberto()?.posicao(i.start || 0); });
+    const voz = await vozNativa(T);
+    if (minha !== FALA_GERACAO) return;
+    holoEstado('falando'); FALANDO_NATIVO = true;
+    // sem marcas de palavra em alguns motores: a boca segue o tempo estimado
+    setTimeout(() => { if (!marcou && minha === FALA_GERACAO) rostoAberto()?.falar(texto); }, 700);
+    await T.speak({ text: texto, lang: 'pt-BR', rate: 1, pitch: 0.92, volume: 1, ...(voz >= 0 ? { voice: voz } : {}) });
+  } catch (e) { toast('Voz do aparelho falhou: ' + (e?.message || e)); }
+  finally {
+    try { ouvinte?.remove?.(); } catch {}
+    FALANDO_NATIVO = false;
+    if (minha === FALA_GERACAO) { holoEstado(null); rostoAberto()?.calar(); }
+  }
+}
 function falarAparelho(texto) {
+  const T = TTS_NATIVO(); if (T) { falarNativo(T, texto); return; }
   if (!('speechSynthesis' in window)) return;
   const vs = speechSynthesis.getVoices().filter(v => /^pt(-|_)BR/i.test(v.lang));
   let escolhida = ''; try { escolhida = localStorage.getItem('insa.voz.aparelho') || ''; } catch {}
@@ -892,7 +925,7 @@ function falarAparelho(texto) {
     speechSynthesis.speak(u);
   });
 }
-function pararFala() { FALA_GERACAO++; try { speechSynthesis.cancel(); } catch {} if (AUDIO) { AUDIO.pause(); AUDIO = null; } holoEstado(null); rostoAberto()?.calar(); }
+function pararFala() { FALA_GERACAO++; try { speechSynthesis.cancel(); } catch {} try { TTS_NATIVO()?.stop(); } catch {} if (AUDIO) { AUDIO.pause(); AUDIO = null; } holoEstado(null); rostoAberto()?.calar(); }
 
 // ───────── voz: ouvir o Comandante, o rosto em tela cheia e o cumprimento diário ─────────
 const VOZ = { aguardando: null, prop: null, ouvindo: null };
@@ -941,7 +974,7 @@ async function processarFala(falado) {
 /** Conversa por voz sem tocar: quando o Manuel termina a pergunta, abre o microfone de novo uma vez. */
 function ouvirDepoisDeFalar() {
   const esperar = () => {
-    const falando = (AUDIO && !AUDIO.paused) || (('speechSynthesis' in window) && speechSynthesis.speaking);
+    const falando = (AUDIO && !AUDIO.paused) || (FALANDO_NATIVO || (('speechSynthesis' in window) && speechSynthesis.speaking));
     if (falando) return setTimeout(esperar, 250);
     if (!rostoAberto() || VOZ.ouvindo) return;
     setTimeout(async () => {
@@ -1049,8 +1082,8 @@ function fecharSeOcioso() {
   clearTimeout(VOZ.ocioso);
   const checar = () => {
     const r = rostoAberto(); if (!r) return;
-    if (r.embutido) { const ocupado = (AUDIO && !AUDIO.paused) || (('speechSynthesis' in window) && speechSynthesis.speaking) || VOZ.ouvindo || VOZ.aguardando || VOZ.prop; if (ocupado) VOZ.ocioso = setTimeout(checar, 3000); else retomarEscuta(); return; }
-    const falando = (AUDIO && !AUDIO.paused) || (('speechSynthesis' in window) && speechSynthesis.speaking) || VOZ.ouvindo;
+    if (r.embutido) { const ocupado = (AUDIO && !AUDIO.paused) || (FALANDO_NATIVO || (('speechSynthesis' in window) && speechSynthesis.speaking)) || VOZ.ouvindo || VOZ.aguardando || VOZ.prop; if (ocupado) VOZ.ocioso = setTimeout(checar, 3000); else retomarEscuta(); return; }
+    const falando = (AUDIO && !AUDIO.paused) || (FALANDO_NATIVO || (('speechSynthesis' in window) && speechSynthesis.speaking)) || VOZ.ouvindo;
     if (falando || VOZ.aguardando || VOZ.prop) { VOZ.ocioso = setTimeout(checar, 3000); return; }
     r.fechar();
   };
@@ -1118,7 +1151,7 @@ function tocarAvatar(tipo) {
   if (podeOuvir()) { atenderChamada(); return; }
   r.legenda('Às ordens, Comandante. Escreva abaixo ou toque duas vezes para a leitura do dia.');
 }
-const FALA_ATIVA = () => !!AUDIO || (('speechSynthesis' in window) && speechSynthesis.speaking);
+const FALA_ATIVA = () => !!AUDIO || (FALANDO_NATIVO || (('speechSynthesis' in window) && speechSynthesis.speaking));
 
 /* ───── 7 · dados holográficos: o que ele cita aparece ao redor do rosto ───── */
 function dadosDaFala(texto) {

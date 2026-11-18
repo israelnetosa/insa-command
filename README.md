@@ -18,6 +18,7 @@ Centro de comando **privado** da carteira INSA Dividend Army. É a sucessora do 
 
 ## Novidades da 2.7 · Manuel sente a carteira, responde ao toque e avisa sozinho
 
+- **2.7.3 · voz no Android:** o WebView do Android não fala pela voz do navegador; agora o Manuel usa o motor de voz do próprio telemóvel (pt-BR, voz masculina quando houver), com a boca acompanhando as palavras.
 - **2.7.2 · tela limpa e microfone:** saíram os botões flutuantes (microfone e ＋); registrar continua em Mais → Registrar e falar com o Manuel pela aba do topo ou pelo console. No Android, o app pede o microfone antes de ouvir e, se o sistema estiver bloqueando, mostra o aviso com o botão "Abrir permissões" (vai direto à tela do app nas configurações).
 - **2.7.1 · Windows sem moldura:** a barra de título do Windows sumiu; o HUD vai até a borda da tela e os botões minimizar/maximizar/fechar ficam no canto, nas cores do app. Arrastar a barra do topo move a janela, dois cliques maximizam e F11 deixa em tela cheia total.
 - **Clima da carteira:** a expressão (sério, neutro, confiante, atento) e a cor do brilho atrás da cabeça acompanham o resultado do dia: âmbar em queda, verde-água em alta. Atualiza a cada carga de dados e no radar ao vivo.
