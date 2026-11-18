@@ -521,11 +521,22 @@ button, a, input, select, textarea, label { touch-action: manipulation; -webkit-
 }
 
 /* ───────── M.A.N.U.E.L. em tela cheia (rosto de fios) e voz ───────── */
-.rosto { position: fixed; inset: 0; z-index: 90; background: radial-gradient(ellipse at 50% 42%, rgba(8,30,44,.92), rgba(2,6,12,.97) 70%);
-  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); animation: rosto-entra .35s ease-out both; touch-action: none; }
-.rosto.saindo { animation: rosto-sai .5s ease-in both; }
-@keyframes rosto-entra { from { opacity: 0; } to { opacity: 1; } }
-@keyframes rosto-sai { to { opacity: 0; } }
+.rosto { position: fixed; inset: 0; z-index: 90; background: radial-gradient(ellipse at 50% 42%, rgba(6,22,34,.95), rgba(0,0,0,.95) 70%);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); animation: rosto-entra .5s cubic-bezier(.32,.72,0,1) both; touch-action: none; will-change: transform; }
+.rosto.saindo { animation: rosto-sai .5s cubic-bezier(.32,.72,0,1) both; }
+/* terminal deslizante: desce do topo e sobe ao fechar */
+@keyframes rosto-entra { from { transform: translateY(-100%); } to { transform: none; } }
+@keyframes rosto-sai { from { transform: none; } to { transform: translateY(-100%); } }
+@media (prefers-reduced-motion: reduce) { .rosto, .rosto.saindo { animation-duration: .01s; } }
+.puxa-manuel { position: fixed; top: 0; left: 50%; transform: translateX(-50%); z-index: 40; display: flex; align-items: center; gap: 8px;
+  padding: 3px 14px 5px; background: rgba(0,0,0,.6); border: 1px solid rgba(72,229,255,.2); border-top: 0;
+  border-radius: 0 0 12px 12px; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); cursor: pointer; touch-action: none; }
+.puxa-manuel[hidden] { display: none; }
+.puxa-manuel:hover { border-color: rgba(72,229,255,.5); }
+.puxa-ponto { width: 7px; height: 7px; border-radius: 50%; background: #ffb347; box-shadow: 0 0 8px #ffb347; animation: puxa-pisca 1.4s ease-in-out infinite; }
+@keyframes puxa-pisca { 50% { opacity: .25; box-shadow: 0 0 2px #ffb347; } }
+.puxa-nome { font: 400 9px var(--mono); letter-spacing: .3em; color: rgba(165,243,252,.7); }
+html.com-rosto .puxa-manuel { display: none; }
 .rosto-cv { position: absolute; inset: 0; width: 100%; height: 100%; }
 .rosto-topo { position: absolute; left: 0; right: 0; top: max(14px, env(safe-area-inset-top)); display: flex; align-items: center; gap: 12px; padding: 0 18px; }
 .rosto-nome { font: 700 15px var(--head); letter-spacing: .32em; color: #a5f3fc; }
@@ -565,3 +576,17 @@ html.com-rosto body { overflow: hidden; }
 @keyframes tl-sobe { from { transform: translateY(0); } to { transform: translateY(-50%); } }
 @media (max-width: 500px) { .rosto-telemetria { font-size: 8px; } }
 @media (prefers-reduced-motion: reduce) { .tl-col { animation: none; } }
+
+/* ───────── avatar vivo no console ───────── */
+.avatar-console { position: relative; height: min(40vh, 400px); margin: -6px -4px 8px; transition: height .35s ease; overflow: hidden;
+  background: radial-gradient(ellipse at 50% 40%, rgba(8,30,44,.55), transparent 70%); border-bottom: 1px solid rgba(72,229,255,.12); }
+.avatar-console.compacto { height: 108px; }
+.rosto.rosto-console { position: absolute; inset: 0; z-index: 1; background: none; backdrop-filter: none; -webkit-backdrop-filter: none; animation: none; touch-action: pan-y; }
+.rosto-console .rosto-telemetria, .rosto-console .rosto-x, .rosto-console .rosto-baixo { display: none; }
+.rosto-console .rosto-topo { top: 8px; padding: 0 10px; }
+.rosto-console .rosto-nome { font-size: 12px; }
+.rosto-console .rosto-estado { font-size: 10px; }
+.avatar-console.compacto .rosto-topo { top: auto; bottom: 8px; }
+@media (min-width: 1001px) { .avatar-console { height: min(46vh, 460px); } }
+/* compacto: o rosto fica preso no topo enquanto o Comandante digita ou rola a conversa */
+.avatar-console.compacto { position: sticky; top: var(--topo, 0px); z-index: 6; background: #03080f; }

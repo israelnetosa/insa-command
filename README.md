@@ -16,6 +16,14 @@ Centro de comando **privado** da carteira INSA Dividend Army. É a sucessora do 
 | Peso do app | 412 KB de JS | 35 KB (12 KB comprimido) |
 | Hospedagem | Presa ao Manus | Sua conta Cloudflare (plano gratuito) |
 
+## Novidades da 2.6 · Manuel vivo no console e terminal deslizante
+
+- **Avatar no console:** o busto 3D fica no topo do console do Manuel. Ao digitar ou rolar a conversa, encolhe para só o rosto e fica preso no topo (sem anéis e com menos brilho, para não estourar em tela pequena).
+- **Estados visíveis:** prontidão, ouvindo, analisando (enquanto a resposta é preparada) e falando.
+- **Gestos:** acena "sim" ao confirmar uma proposta, "não" ao recusar ou em erro, e inclina a cabeça em dúvida quando precisa de mais dados.
+- **Olhar:** acompanha o dedo ou o ponteiro e olha para a caixa de texto quando o Comandante começa a escrever.
+- **Terminal deslizante:** em todas as telas (menos no próprio console) há uma aba discreta com um ponto âmbar a piscar, logo abaixo da barra do topo. Um toque, ou puxar a barra para baixo, faz o Manuel descer em tela cheia (0,5 s, easing `cubic-bezier(.32,.72,0,1)`), com fundo preto quase opaco, estado no cabeçalho, ✕ para fechar, a última fala ou a leitura do dia em texto e o botão "segure para falar". Puxar para cima recolhe.
+
 ## Novidades da 2.5 · Manuel em malha 3D
 
 - **Rosto 3D "malha reativa":** cabeça em malha de fios com nós luminosos, olhos âmbar brilhando, busto em nuvem de pontos, anéis dourados com faíscas e poeira de dados. WebGL (three.js), carregado só quando o rosto abre.

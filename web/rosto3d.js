@@ -338,21 +338,28 @@ export async function criar(canvas, { forte = true, modelo = '/modelos/manuel.gl
   const D = cabeca.morphTargetDictionary, I = cabeca.morphTargetInfluences;
   const m = (nome, v) => { const k = D[nome]; if (k != null) I[k] += (cl(v) - I[k]) * 0.6; };
 
-  let W = 1, H = 1;
+  let W = 1, H = 1, modoEnq = 'tela', alvoCam = null, camAtual = null;
+  // enquadramentos: tela cheia (cabeça + ombros), console grande (busto) e console compacto (só o rosto)
+  const enquadre = (modo, w, h) => {
+    const retrato = h > w;
+    if (modo === 'rosto') return { fov: 30, y: 0.08, z: 4.6, ly: 0.05 };
+    if (modo === 'busto') return retrato ? { fov: 34, y: -0.2, z: 6, ly: -0.45 } : { fov: 30, y: -0.12, z: 5.3, ly: -0.3 };
+    return retrato ? { fov: 34, y: -0.25, z: 6.3, ly: -0.45 } : { fov: 26, y: -0.3, z: 6.0, ly: -0.42 };
+  };
+  const aplicarCam = () => { const c = camAtual; camera.fov = c.fov; camera.position.set(0, c.y, c.z); camera.lookAt(0, c.ly, 0); camera.updateProjectionMatrix(); };
   const api = {
-    medir(w, h, dpr) {
+    medir(w, h, dpr, modo = 'tela') {
       nos.material.uniforms.uTam.value = (forte ? 2 : 2.6) * dpr;
       W = w; H = h; renderer.setPixelRatio(dpr); renderer.setSize(w, h, false);
-      camera.aspect = w / h;
-      // enquadramento: cabeça no terço de cima, ombros entrando por baixo; no celular em pé, um pouco mais perto
-      const retrato = h > w;
-      camera.fov = retrato ? 34 : 26; camera.position.set(0, retrato ? -0.25 : -0.3, retrato ? 6.3 : 6.0); camera.lookAt(0, retrato ? -0.45 : -0.42, 0);
-      camera.updateProjectionMatrix();
+      camera.aspect = w / h; modoEnq = modo; alvoCam = enquadre(modo, w, h); if (!camAtual) camAtual = { ...alvoCam };
+      aplicarCam();
       composer?.setSize(w, h); composer?.setPixelRatio(dpr); bloom?.setSize(w * dpr, h * dpr);
     },
+    enquadrar(modo) { modoEnq = modo; alvoCam = enquadre(modo, W, H); },
     /** P: pose de rosto.js; info: { T, dt, k (entrada 0–1), som, falando, ouvindo } */
     quadro(P, info) {
-      const { T, dt, k, som = 0, falando = false, ouvindo = false } = info;
+      const { T, dt, k, som = 0, falando = false, ouvindo = false, pensando = false, pulso = 0 } = info;
+      if (alvoCam && camAtual) { const kc = Math.min(1, dt * 5); for (const c of ['fov', 'y', 'z', 'ly']) camAtual[c] += (alvoCam[c] - camAtual[c]) * kc; aplicarCam(); }
       // ── expressões ──
       const ab = P.aberto, red = P.redondo;
       m('jawOpen', ab * 0.72);
@@ -384,15 +391,17 @@ export async function criar(canvas, { forte = true, modelo = '/modelos/manuel.gl
       grupoCabeca.position.y = Math.sin(T * 0.8) * 0.012;
       busto.rotation.y = grupoCabeca.rotation.y * 0.15;
       const fade = k * k * (3 - 2 * k);
-      fios.material.opacity = OP_FIOS * fade * (1 + (falando ? som * 0.5 : 0)); nos.material.opacity = OP_NOS * fade;
+      const dens = modoEnq === 'rosto' ? 0.4 : 1;   // compacto: menos pixels, menos brilho somado
+      fios.material.opacity = OP_FIOS * dens * fade * (1 + (falando ? som * 0.5 : 0)); nos.material.opacity = OP_NOS * dens * fade;
+      for (const a of aneis) a.grupo.visible = modoEnq !== 'rosto';
       cabeca.material.opacity = 0.94 * fade; busto.material.opacity = 0.75 * fade;
       grupoCabeca.scale.setScalar(0.92 + 0.08 * fade);
 
       // ── anéis com faíscas: brilham mais quando ele fala; esverdeiam quando ouve ──
       const tom = ouvindo ? new THREE.Color('#34f5a4') : null;
       for (const a of aneis) {
-        a.grupo.rotation.y += a.vel * dt * (falando ? 1.6 : 1);
-        const base = (a.cor === CIANO ? 0.16 : 0.95) * (forte ? 1 : 1.6), extra = falando ? som * 0.8 : 0;
+        a.grupo.rotation.y += a.vel * dt * (falando ? 1.6 : 1) * (pensando ? 3.2 : 1);
+        const base = (a.cor === CIANO ? 0.16 : 0.95) * (forte ? 1 : 1.6) * (1 + pulso * 1.6 + (pensando ? 0.35 : 0)), extra = falando ? som * 0.8 : 0;
         for (let i = 0; i < a.n; i++) {
           const f = a.fase[i], fa = Math.sin(T * 2.4 + f * 3) * 0.5 + 0.5, faisca = Math.pow(Math.sin(T * 1.3 + f * 7) * 0.5 + 0.5, 18) * 1.6;
           const v = (base * (0.55 + fa * 0.45) + faisca + extra * fa) * fade * a.brilho;
@@ -449,13 +458,14 @@ export async function criar(canvas, { forte = true, modelo = '/modelos/manuel.gl
       }
       for (const a of aneis) { const l = a.grupo.userData.linha; if (l) l.material.opacity = (a.cor === CIANO ? 0.3 : 0.9) * fade * (falando ? 1 + som * 0.4 : 1); }
       for (const b of bokeh) { b.position.x += b.userData.vx * dt; b.position.y += b.userData.vy * dt; if (Math.abs(b.position.x) > 2.6) b.userData.vx *= -1; if (Math.abs(b.position.y) > 2.2) b.userData.vy *= -1; b.material.opacity = b.userData.op * fade; }
-      halo.material.opacity = (0.45 + (falando ? som * 0.35 : 0) + (ouvindo ? 0.1 : 0)) * fade;
+      halo.material.opacity = (modoEnq === 'rosto' ? 0.25 : 1) * (0.45 + (falando ? som * 0.35 : 0) + (ouvindo ? 0.1 : 0) + (pensando ? 0.15 + Math.sin(T * 6) * 0.12 : 0) + pulso * 0.5) * fade;
+      halo.material.color.setRGB(0.05 + pulso * 0.5, 0.31 + pulso * 0.15, 0.4 - pulso * 0.3);
       // ── poeira subindo devagar ──
       const pp = gPo.attributes.position.array;
       for (let i = 0; i < nPo; i++) { pp[i * 3 + 1] += velPo[i] * dt; if (pp[i * 3 + 1] > 2.3) pp[i * 3 + 1] = -2.3; pp[i * 3] += Math.sin(T * 0.3 + i) * 0.0008; }
       gPo.attributes.position.needsUpdate = true;
       poeira.material.opacity = 0.6 * fade;
-      if (bloom) bloom.strength = 0.42 + (falando ? som * 0.25 : 0);
+      if (bloom) bloom.strength = (modoEnq === 'rosto' ? 0.4 : 1) * (0.42 + (falando ? som * 0.25 : 0));
       if (composer) composer.render(); else renderer.render(cena, camera);
     },
     liberar() {

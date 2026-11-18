@@ -2,7 +2,7 @@
 import { ophanim, ligarOphanim } from './ophanim.js';
 import { paraFala, VOZES_MASCULINAS } from '../src/fala.ts';
 import { ouvir, podeOuvir, interpretar, lerProposta, tirarChamada } from './voz.js';
-import { abrirRosto, rostoAberto } from './rosto.js';
+import { abrirRosto, rostoAberto, avatarConsole } from './rosto.js';
 import { ligarEscuta } from './escuta.js';
 
 const $app = document.getElementById('app');
@@ -839,6 +839,7 @@ function falar(texto, botao, { tela = false } = {}) {
   const cfg = CONV?.config || {};
   const limpo = paraFala(texto);
   if (!limpo) return;
+  VOZ.ultimaFala = String(texto);
   const rosto = tela && pref('rosto') ? abrirRostoManuel() : rostoAberto();
   if (cfg.voz_motor === 'desligada') { rosto?.legenda(texto); return; }
   if (botao) { botao.disabled = true; botao.dataset.rotuloOriginal ??= botao.textContent; botao.textContent = '⏳ carregando…'; }
@@ -903,6 +904,7 @@ function estadoHumor() {
   return { variacao_pct: base ? (t.resultado_dia || 0) / base * 100 : 0, alertas: (S?.alertas || []).length };
 }
 function abrirRostoManuel() {
+  const av = avatarConsole(); if (av?.ativo) { ESCUTA?.pausar(); av.humor(estadoHumor()); return av; }
   ESCUTA?.pausar();
   const t = S?.totais || {}, agora = new Date().toLocaleTimeString('pt-BR');
   const telemetria = [`T ${agora} :: SYS.MANUEL ONLINE`, `PATRIMONIO ${brl(t.patrimonio)}`, `CAIXA ${brl(t.caixa)} :: RENDA/MES ${brl(t.renda_mes_estimada)}`, `RESULTADO.DIA ${brl(t.resultado_dia)}`,
@@ -923,6 +925,7 @@ async function processarFala(falado) {
     const p = VOZ.prop; VOZ.prop = null;
     try {
       const res = await api(`/api/manuel/propostas/${p.id}/${a.tipo === 'confirmar' ? 'confirmar' : 'recusar'}`, { method: 'POST', body: {} });
+      rostoAberto()?.gesto?.(res.status === 'confirmada' ? 'sim' : 'nao');
       falar(res.status === 'confirmada' ? 'Gravado no razão, Comandante.' : 'Proposta descartada.', null, { tela: true });
       if (res.status === 'confirmada') { await load().catch(() => {}); }
       atualizarConsole();
@@ -1009,7 +1012,7 @@ function ligarEscutaSePreciso() {
   });
 }
 function desligarEscuta() { ESCUTA?.desligar(); ESCUTA = null; indicadorEscuta('pausada'); }
-function retomarEscuta() { if (ESCUTA && !rostoAberto() && !VOZ.ouvindo && document.visibilityState === 'visible') ESCUTA.retomar(); }
+function retomarEscuta() { const r = rostoAberto(); if (ESCUTA && (!r || r.embutido) && !VOZ.ouvindo && document.visibilityState === 'visible') ESCUTA.retomar(); }
 function bip() {
   try { const c = new (window.AudioContext || window.webkitAudioContext)(); const o = c.createOscillator(), g = c.createGain();
     o.frequency.value = 880; o.frequency.setValueAtTime(1320, c.currentTime + 0.08); g.gain.setValueAtTime(0.0001, c.currentTime);
@@ -1032,6 +1035,7 @@ function fecharSeOcioso() {
   clearTimeout(VOZ.ocioso);
   const checar = () => {
     const r = rostoAberto(); if (!r) return;
+    if (r.embutido) { const ocupado = (AUDIO && !AUDIO.paused) || (('speechSynthesis' in window) && speechSynthesis.speaking) || VOZ.ouvindo || VOZ.aguardando || VOZ.prop; if (ocupado) VOZ.ocioso = setTimeout(checar, 3000); else retomarEscuta(); return; }
     const falando = (AUDIO && !AUDIO.paused) || (('speechSynthesis' in window) && speechSynthesis.speaking) || VOZ.ouvindo;
     if (falando || VOZ.aguardando || VOZ.prop) { VOZ.ocioso = setTimeout(checar, 3000); return; }
     r.fechar();
@@ -1054,6 +1058,41 @@ const MOTIVACAO = [
   'O mercado oscila; a estratégia, não. Seguimos na rota.',
   'Cada provento reinvestido é uma bola de neve ganhando massa.',
 ];
+/* Terminal deslizante: um ponto âmbar no topo de toda tela; toque ou puxe para baixo e o Manuel desce em tela cheia */
+let PUXA = null;
+function puxaManuel(rotaAtual) {
+  if (!PUXA) {
+    PUXA = document.createElement('button');
+    PUXA.type = 'button'; PUXA.className = 'puxa-manuel'; PUXA.setAttribute('aria-label', 'Abrir o M.A.N.U.E.L.');
+    PUXA.innerHTML = '<span class="puxa-ponto" aria-hidden="true"></span><span class="puxa-nome">M.A.N.U.E.L.</span>';
+    document.body.appendChild(PUXA);
+    addEventListener('resize', () => { PUXA.style.top = (document.getElementById('hudtop')?.offsetHeight || 0) + 'px'; });
+    PUXA.addEventListener('click', abrirTerminal);
+    // puxar para baixo: na aba ou na barra do topo
+    let y0 = null;
+    const ini = (e) => { y0 = e.touches[0].clientY; };
+    const mov = (e) => { if (y0 != null && e.touches[0].clientY - y0 > 45) { y0 = null; abrirTerminal(); } };
+    const fim = () => { y0 = null; };
+    for (const alvo of [PUXA, document.getElementById('hudtop')]) {
+      alvo?.addEventListener('touchstart', ini, { passive: true }); alvo?.addEventListener('touchmove', mov, { passive: true }); alvo?.addEventListener('touchend', fim);
+    }
+  }
+  PUXA.style.top = (document.getElementById('hudtop')?.offsetHeight || 0) + 'px';   // pendurada logo abaixo da barra do topo
+  PUXA.hidden = rotaAtual === 'manuel' || !pref('rosto');   // no console o Manuel já está na tela
+}
+async function abrirTerminal() {
+  if (rostoAberto() && !avatarConsole()?.ativo) return;
+  const r = abrirRostoManuel();
+  navigator.vibrate?.(12);
+  if (VOZ.ultimaFala) { r.legenda(VOZ.ultimaFala); return; }
+  r.legenda('Às suas ordens, Comandante.');
+  try {   // sem fala recente: mostra a leitura do dia (sem falar; o Comandante segura o botão se quiser)
+    const sd = await api('/api/manuel/saudacao');
+    const leitura = String(sd.texto || '').replace(/^Senhor,?\s*/i, '').split('\n').filter(Boolean).slice(0, 3).join(' ');
+    r.humor({ variacao_pct: sd.variacao_pct, alertas: sd.alertas });
+    if (leitura && rostoAberto() === r) r.legenda(leitura[0].toUpperCase() + leitura.slice(1));
+  } catch { /* fica a saudação curta */ }
+}
 async function saudacaoDiaria(forcar = false) {
   if (!forcar && (!pref('saudacao') || localStorage.getItem('insa.saudacao.dia') === hoje())) return;
   try { localStorage.setItem('insa.saudacao.dia', hoje()); } catch {}
@@ -1091,9 +1130,10 @@ async function manuel() {
   const c = CONV, semChave = !c.chaves.claude && !c.chaves.gemini;
   const ativo = c.config.provedor === 'gemini' ? (c.chaves.gemini ? 'Gemini' : 'Claude') : (c.chaves.claude ? 'Claude' : 'Gemini');
   frame('manuel', `<div class="eyebrow">M.A.N.U.E.L. / Console</div>
-    <div class="presenca"><div>${HOLO}</div><div><h1 style="margin-bottom:4px">Às ordens, Senhor.</h1>
+    ${pref('rosto') ? `<h1 class="sr">M.A.N.U.E.L., às ordens</h1><div class="avatar-console" id="avatar-host"></div>`
+      : `<div class="presenca"><div>${HOLO}</div><div><h1 style="margin-bottom:4px">Às ordens, Senhor.</h1>
       <div class="estado-ia" id="estado">Em prontidão</div>
-      <p class="faint" style="margin:6px 0 0">Oficial de inteligência da carteira. Analisa, simula e pesquisa; lançamentos só com a sua confirmação.</p></div></div>
+      <p class="faint" style="margin:6px 0 0">Oficial de inteligência da carteira. Analisa, simula e pesquisa; lançamentos só com a sua confirmação.</p></div></div>`}
     ${semChave ? `<div class="banner">Nenhuma chave de IA configurada: só as respostas locais funcionam. <a href="#/ajustes">Cadastre a do Claude e/ou a do Gemini em Ajustes → Inteligência.</a></div>` : ''}
     <div class="livebar">
       <span class="chip ${semChave ? '' : 'open'}"><i class="dot ${semChave ? '' : 'on'}"></i>${semChave ? 'sem IA' : ativo + (c.chaves.claude && c.chaves.gemini ? ' + reserva' : '')}</span>
@@ -1119,6 +1159,16 @@ async function manuel() {
     const sobra = innerHeight - f.getBoundingClientRect().bottom - reserva + th.clientHeight;
     const min = innerHeight < 500 ? 140 : 220;
     th.style.maxHeight = Math.max(min, sobra) + 'px'; th.style.minHeight = Math.min(300, Math.max(min, sobra)) + 'px'; };
+  // avatar vivo no topo do console
+  const hostAv = document.getElementById('avatar-host');
+  const av = hostAv ? abrirRosto({ host: hostAv, estado: estadoHumor() }) : null;
+  av?.enquadrar('busto');
+  if (hostAv) hostAv.style.setProperty('--topo', (document.getElementById('hudtop')?.offsetHeight || 0) + 'px');
+  const compactar = (sim) => { if (!av || hostAv.classList.contains('compacto') === sim) return; hostAv.classList.toggle('compacto', sim); av.enquadrar(sim ? 'rosto' : 'busto'); setTimeout(ajustar, 380); };
+  th.addEventListener('scroll', () => compactar(document.activeElement === ta || th.scrollHeight - th.scrollTop - th.clientHeight > 60));
+  ta.addEventListener('focus', () => { compactar(true); av?.olharPara(ta, 2500); });
+  ta.addEventListener('blur', () => setTimeout(() => compactar(th.scrollHeight - th.scrollTop - th.clientHeight > 60), 150));
+  ta.addEventListener('input', () => av?.olharPara(ta, 1800));
   ajustar(); addEventListener('resize', ajustar);
   th.scrollTop = th.scrollHeight;
   const enviar = async (texto) => {
@@ -1126,18 +1176,21 @@ async function manuel() {
     const b = f.querySelector('button'); b.disabled = true; ta.value = '';
     th.querySelector('.empty')?.remove();
     th.insertAdjacentHTML('beforeend', bolha({ papel: 'usuario', texto }) + `<div class="msg ele pensando" id="pens"><div class="avatar">${EMBLEM}</div><div class="balao"><span class="dots"><i></i><i></i><i></i></span> analisando a carteira…</div></div>`);
-    th.scrollTop = th.scrollHeight; holoEstado('pensando');
+    th.scrollTop = th.scrollHeight; holoEstado('pensando'); av?.pensar(true);
     try {
       const r = await api('/api/manuel/mensagem', { method: 'POST', body: { texto } });
+      av?.pensar(false);
+      const ferr = r.meta?.ferramentas?.[0]?.ferramenta;
+      if (['ajuda_lancamento', 'requer_ia'].includes(ferr)) av?.gesto('duvida');
       CONV.propostas = (CONV.propostas || []).concat(r.propostas || []);
       CONV.mensagens.push({ papel: 'usuario', texto }, { papel: 'manuel', texto: r.texto, meta: r.meta });
       CONV.uso.chamadas++;
       document.getElementById('pens')?.remove();
       th.insertAdjacentHTML('beforeend', bolha({ papel: 'manuel', texto: r.texto, meta: r.meta }));
       th.scrollTop = th.scrollHeight; holoEstado(null);
-      if (CONV.config.fala_auto) falar(r.texto);
+      if (CONV.config.fala_auto) falar(r.texto); else av?.olharPara(th.lastElementChild, 1800);
     } catch (e) {
-      document.getElementById('pens')?.remove(); holoEstado(null);
+      document.getElementById('pens')?.remove(); holoEstado(null); av?.pensar(false); av?.gesto('nao');
       th.insertAdjacentHTML('beforeend', `<div class="alert atencao"><div>${md(e.message)}</div></div>`);
       th.scrollTop = th.scrollHeight;
       ta.value = texto;
@@ -1160,11 +1213,12 @@ async function manuel() {
       const p = CONV.propostas.find(x => String(x.id) === id); if (p) p.status = r.status;
       t.closest('.proposta').outerHTML = cartaoProposta(p);
       toast(r.status === 'confirmada' ? 'Lançamento gravado no razão.' : 'Proposta recusada.');
+      avatarConsole()?.gesto(r.status === 'confirmada' ? 'sim' : 'nao');
       if (r.status === 'confirmada') load().catch(() => {});
     } catch (err) { toast(err.message, 6000); t.disabled = false; }
   });
   if ('speechSynthesis' in window) speechSynthesis.getVoices();
-  ta.focus();
+  if (!av && matchMedia('(pointer: fine)').matches) ta.focus();   // com o avatar, o teclado só abre quando o Comandante tocar
 }
 
 // ───────── dados e rotas ─────────
@@ -1189,6 +1243,7 @@ async function route(view) {
     window.scrollTo(0, 0);
     if (!SAUDOU && !offline) { SAUDOU = true; setTimeout(() => saudacaoDiaria(), 700); }
     ligarEscutaSePreciso();
+    puxaManuel(v);
   } catch (e) { if (e.message !== 'Sessão expirada.') $app.innerHTML = `<div class="gate"><div class="card"><h2>Falha ao carregar</h2><p class="muted">${esc(e.message)}</p><div class="actions" style="justify-content:center"><button class="btn" id="retry">Tentar de novo</button></div></div></div>`; document.getElementById('retry')?.addEventListener('click', () => location.reload()); }
 }
 window.addEventListener('hashchange', () => { if (S || offline) route(); });

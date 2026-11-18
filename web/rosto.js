@@ -145,20 +145,22 @@ export function humor(estado = {}) {
   return { nome: 'neutro', sobr: 0.05, franze: 0, sorriso: 0.15, abertura: 1 };
 }
 
-let ATUAL = null;
+let ATUAL = null, AVATAR = null;
 const pref3d = () => { try { return localStorage.getItem('insa.pref.rosto3d') !== '0'; } catch { return true; } };
 /**
  * Abre o rosto em tela cheia. Devolve um controle:
  *  falar(texto, { audio, fala })  · posicao(charIndex) · ouvindo(bool, parcial) · legenda(t) · humor(estado) · fechar()
  */
-export function abrirRosto({ estado = {}, aoFechar, aoMicrofone, telemetria = [] } = {}) {
-  if (ATUAL) { ATUAL.humor(estado); return ATUAL; }
+export function abrirRosto({ estado = {}, aoFechar, aoMicrofone, telemetria = [], host = null } = {}) {
+  // host: modo console (avatar embutido na página, sem tomar a tela)
+  if (!host && ATUAL) { ATUAL.humor(estado); return ATUAL; }
+  if (host && AVATAR) { AVATAR.humor(estado); AVATAR.montar(host); return AVATAR; }
   const quieto = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const nivel = nivelAparelho();
   const fator = [0.45, 0.75, 1.15][nivel], dprMax = [1.25, 2, 3][nivel], msAlvo = [33, 22, 16][nivel];
 
   const el = document.createElement('div');
-  el.className = 'rosto'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', 'M.A.N.U.E.L.');
+  el.className = host ? 'rosto rosto-console' : 'rosto'; el.setAttribute('role', host ? 'img' : 'dialog'); el.setAttribute('aria-label', 'M.A.N.U.E.L.');
   const linhas = (telemetria.length ? telemetria : ['SYS.MANUEL :: ONLINE', 'NUCLEO :: MALHA REATIVA', 'FEED B3 :: AGUARDANDO']).map(t => String(t).replace(/[<>&]/g, ''));
   const coluna = (k) => Array.from({ length: 3 }, () => linhas).flat().map((t, i) => `<div>${String((i * 7919 + k) % 9973).padStart(4, '0')} ${t}</div>`).join('');
   el.innerHTML = `<div class="rosto-telemetria" aria-hidden="true"><div class="tl-col">${coluna(1)}</div><div class="tl-col tl-dir">${coluna(5)}</div></div><canvas class="rosto-cv rosto-cv3d" hidden></canvas><canvas class="rosto-cv"></canvas>
@@ -166,8 +168,7 @@ export function abrirRosto({ estado = {}, aoFechar, aoMicrofone, telemetria = []
       <button type="button" class="rosto-x" aria-label="Fechar">✕</button></div>
     <div class="rosto-baixo"><p class="rosto-legenda" id="rosto-leg" aria-live="polite"></p>
       ${aoMicrofone ? '<button type="button" class="rosto-mic" id="rosto-mic" aria-label="Segure para falar"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 15a3.5 3.5 0 0 0 3.5-3.5v-6a3.5 3.5 0 1 0-7 0v6A3.5 3.5 0 0 0 12 15zm6-3.5a1 1 0 1 1 2 0 8 8 0 0 1-7 7.94V21h3a1 1 0 1 1 0 2H8a1 1 0 1 1 0-2h3v-1.56A8 8 0 0 1 4 11.5a1 1 0 1 1 2 0 6 6 0 0 0 12 0z"/></svg>segure para falar</button>' : ''}</div>`;
-  document.body.appendChild(el);
-  document.documentElement.classList.add('com-rosto');
+  if (host) host.appendChild(el); else { document.body.appendChild(el); document.documentElement.classList.add('com-rosto'); }
   const cv = el.querySelector('canvas.rosto-cv:not(.rosto-cv3d)'), ctx = cv.getContext('2d', { alpha: true, desynchronized: true });
   const cv3 = el.querySelector('.rosto-cv3d');
   // rosto 3D ("malha reativa"): carregado sob demanda nos aparelhos médios e fortes; até chegar, os fios 2D aparecem
@@ -177,14 +178,21 @@ export function abrirRosto({ estado = {}, aoFechar, aoMicrofone, telemetria = []
     const url = '/rosto3d.js';
     import(url).then((mod) => mod.criar(cv3, { forte: nivel === 2 })).then((api) => {
       if (saindo || !document.body.contains(el)) { api.liberar(); return; }
-      r3 = api; cv3.hidden = false; r3.medir(innerWidth, innerHeight, dpr3());
+      r3 = api; cv3.hidden = false; medir();
       cv3.classList.add('pronto'); cv.classList.add('some'); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, cv.width, cv.height);
     }).catch(() => { /* fica no rosto 2D */ });
   }
   const leg = el.querySelector('#rosto-leg'), est = el.querySelector('#rosto-estado');
   let W = 0, H = 0, dpr = 1;
-  const medir = () => { dpr = Math.min(dprMax, devicePixelRatio || 1); W = innerWidth; H = innerHeight; cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); r3?.medir(W, H, dpr3()); };
+  const medir = () => {
+    dpr = Math.min(dprMax, devicePixelRatio || 1);
+    if (host) { const b = el.getBoundingClientRect(); W = Math.max(40, b.width); H = Math.max(40, b.height); } else { W = innerWidth; H = innerHeight; }
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); r3?.medir(W, H, dpr3(), host ? enquadre : 'tela');
+  };
+  let enquadre = 'busto';
   medir(); addEventListener('resize', medir);
+  const ro = host ? new ResizeObserver(() => medir()) : null; ro?.observe(el);
+  let visivel = true; const io = host ? new IntersectionObserver(([e]) => { visivel = e.isIntersecting; }) : null; io?.observe(el);
 
   const fios = criarFios(fator);
   // pose atual (P) e alvo (A)
@@ -220,39 +228,58 @@ export function abrirRosto({ estado = {}, aoFechar, aoMicrofone, telemetria = []
     el.classList.add('saindo');
   };
   el.querySelector('.rosto-x').onclick = (e) => { e.stopPropagation(); fechar(); };
-  el.addEventListener('pointermove', (e) => { ponteiro = [(e.clientX / W - 0.5) * 2, (e.clientY / H - 0.45) * 2]; });
+  if (!host) {   // terminal deslizante: puxar para cima recolhe o Manuel
+    let y0 = null;
+    el.addEventListener('touchstart', (e) => { y0 = e.target.closest('.rosto-mic, .rosto-legenda') ? null : e.touches[0].clientY; }, { passive: true });
+    el.addEventListener('touchmove', (e) => { if (y0 != null && y0 - e.touches[0].clientY > 70) { y0 = null; fechar(); } }, { passive: true });
+  }
+  const alvoTela = (cx, cy) => { const b = el.getBoundingClientRect(); return [Math.max(-1, Math.min(1, (cx - (b.left + b.width / 2)) / Math.max(160, b.width / 2))), Math.max(-1, Math.min(1, (cy - (b.top + b.height * 0.42)) / Math.max(160, b.height / 2)))]; };
+  (host ? window : el).addEventListener('pointermove', (e) => { if (host && !visivel) return; ponteiro = host ? alvoTela(e.clientX, e.clientY) : [(e.clientX / W - 0.5) * 2, (e.clientY / H - 0.45) * 2]; ultimoPonteiro = performance.now(); });
   el.addEventListener('pointerleave', () => { ponteiro = null; });
   const mic = el.querySelector('#rosto-mic');
   if (mic && aoMicrofone) aoMicrofone(mic);
-  el.addEventListener('click', (e) => { if ((e.target === cv || e.target === cv3) && !ouvindoAgora) fechar(); });
+  if (!host) el.addEventListener('click', (e) => { if ((e.target === cv || e.target === cv3) && !ouvindoAgora) fechar(); });
+  let ultimoPonteiro = 0, olharFixo = null, pensando = false, gesto = null, pulso = 0;
 
   const ctrl = {
     falar(texto, { audio = null, porPalavra = false } = {}) {
       fala = { texto: String(texto || ''), audio, porPalavra, pos: 0, inicio: performance.now(), dur: Math.max(1.2, String(texto || '').length / 13.5), ultimoLimite: 0, ultimoLimiteEm: 0, ativo: true };
       if (audio) { const ok = ligarAnalisador(audio); fala.analisa = ok; audio.addEventListener('loadedmetadata', () => { if (isFinite(audio.duration)) fala.dur = audio.duration; }, { once: true }); }
+      pensando = false; olharFixo = null;
       ctrl.legenda(texto); est.textContent = 'falando';
     },
     /** voz do aparelho: início de cada palavra */
     posicao(charIndex) { if (fala) { fala.ultimoLimite = charIndex; fala.ultimoLimiteEm = performance.now(); } },
-    calar() { if (fala) fala.ativo = false; est.textContent = ouvindoAgora ? 'ouvindo' : 'em linha'; },
+    calar() { if (fala) fala.ativo = false; pensando = false; est.textContent = ouvindoAgora ? 'ouvindo' : 'em linha'; },
     ouvindo(on, parcial) {
-      ouvindoAgora = !!on; el.classList.toggle('ouvindo', ouvindoAgora);
+      ouvindoAgora = !!on; el.classList.toggle('ouvindo', ouvindoAgora); if (on) pensando = false;
       est.textContent = on ? 'ouvindo' : (fala?.ativo ? 'falando' : 'em linha');
       H_ = humor({ ...estado, ouvindo: on });
       if (parcial != null) leg.textContent = parcial ? '“' + parcial + '”' : 'Ouvindo, Comandante…';
     },
     legenda(t) { leg.textContent = String(t || '').replace(/\s+/g, ' ').slice(0, 400); },
     humor(e) { estado = { ...estado, ...e }; H_ = humor(estado); },
-    pensar() { est.textContent = 'analisando'; },
+    pensar(on = true) { pensando = !!on; est.textContent = on ? 'analisando' : (fala?.ativo ? 'falando' : 'em linha'); },
+    /** gestos de cabeça: 'sim' (acena, pulso dourado), 'nao' (balança), 'duvida' (inclina) */
+    gesto(tipo) { gesto = { tipo, t0: T }; if (tipo === 'sim') pulso = 1; },
+    /** olha para um ponto da tela (elemento) por alguns segundos; null solta */
+    olharPara(alvoEl, ms = 2500) {
+      if (!alvoEl) { olharFixo = null; return; }
+      const b = alvoEl.getBoundingClientRect(); olharFixo = { v: alvoTela(b.left + b.width / 2, b.top + b.height / 2), ate: performance.now() + ms };
+    },
+    /** console: 'busto' (grande) ou 'rosto' (compacto, só a cabeça) */
+    enquadrar(m) { if (enquadre === m) return; enquadre = m; el.classList.toggle('compacto', m === 'rosto'); r3?.enquadrar?.(m); },
+    montar(novoHost) { if (el.parentNode !== novoHost) novoHost.appendChild(el); requestAnimationFrame(medir); if (!rodando) iniciar(); },
     /** som bloqueado pelo aparelho: o próximo toque na tela toca a fala */
     aguardarToque(fn) {
       est.textContent = 'toque para ouvir';
       const h = (e) => { if (e.target.closest('button')) return; e.stopPropagation(); el.removeEventListener('click', h, true); est.textContent = 'falando'; fn(); };
       el.addEventListener('click', h, true);
     },
-    fechar, el,
+    fechar: host ? () => {} : fechar, el, embutido: !!host,
+    get ativo() { return !host || (document.body.contains(el) && visivel); },
   };
-  ATUAL = ctrl;
+  if (host) AVATAR = ctrl; else ATUAL = ctrl;
 
   // ───────── animação ─────────
   const tmp = [0, 0];
@@ -319,11 +346,13 @@ export function abrirRosto({ estado = {}, aoFechar, aoMicrofone, telemetria = []
     ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
   };
 
-  let ult = 0;
+  let ult = 0, rodando = false;
   const quadro = (agora) => {
-    if (!document.body.contains(el)) return;
+    if (!document.body.contains(el)) { rodando = false; return; }   // console saiu da tela: para (volta no montar)
     requestAnimationFrame(quadro);
-    if (document.hidden || agora - ult < msAlvo - 2) return;
+    const ocupado = fala?.ativo || ouvindoAgora || pensando || gesto || pulso > 0.02;
+    const alvoMs = host && !ocupado ? Math.max(msAlvo, 33) : msAlvo;   // parado no console: 30 q/s
+    if (document.hidden || !visivel || agora - ult < alvoMs - 2) return;
     const dt = ult ? Math.min(0.1, (agora - ult) / 1000) : 0.016; ult = agora;
     if (!quieto) T += dt;
     entrada = saindo ? Math.max(0, entrada - dt * 2.4) : Math.min(1, entrada + dt * (quieto ? 10 : 1.25));
@@ -367,7 +396,11 @@ export function abrirRosto({ estado = {}, aoFechar, aoMicrofone, telemetria = []
 
     // ── olhar: segue o dedo/mouse; senão passeia, e fala olhando para o Comandante com pequenas sacadas ──
     proxOlhar -= dt; proxSacada -= dt;
-    if (ponteiro) alvoOlhar = [Math.max(-1, Math.min(1, ponteiro[0] * 1.3)), Math.max(-1, Math.min(1, ponteiro[1] * 1.3))];
+    if (olharFixo && performance.now() > olharFixo.ate) olharFixo = null;
+    if (host && ponteiro && performance.now() - ultimoPonteiro > 2500) ponteiro = null;
+    if (pensando) alvoOlhar = [Math.sin(T * 2.6) * 0.75, -0.25 + Math.sin(T * 1.3) * 0.15];   // olhos varrendo: analisando
+    else if (olharFixo) alvoOlhar = olharFixo.v;
+    else if (ponteiro) alvoOlhar = [Math.max(-1, Math.min(1, ponteiro[0] * 1.3)), Math.max(-1, Math.min(1, ponteiro[1] * 1.3))];
     else if (proxOlhar <= 0) { proxOlhar = 1.2 + Math.random() * 2.6; alvoOlhar = falando || ouvindoAgora ? [(Math.random() - 0.5) * 0.35, (Math.random() - 0.5) * 0.25] : [(Math.random() - 0.5) * 1.6, (Math.random() - 0.5) * 0.9]; }
     let sx = 0, sy = 0; if (proxSacada <= 0) { proxSacada = 0.25 + Math.random() * 0.6; sx = (Math.random() - 0.5) * 0.08; sy = (Math.random() - 0.5) * 0.05; }
     const ko = Math.min(1, dt * 9);
@@ -379,11 +412,23 @@ export function abrirRosto({ estado = {}, aoFechar, aoMicrofone, telemetria = []
       P.cabY = Math.sin(T * 0.5) * 0.4 + (falando ? nivelSom * 0.8 : 0);
       P.incl = Math.sin(T * 0.23) * 0.025 + (ouvindoAgora ? 0.05 : 0) + P.olharX * 0.015;
     }
-    if (r3) r3.quadro(P, { T, dt, k: entrada, som: nivelSom, falando, ouvindo: ouvindoAgora });
+    // ── gestos ──
+    if (gesto) {
+      const g = T - gesto.t0;
+      if (gesto.tipo === 'sim') { if (g < 0.95) P.cabY += Math.sin(g / 0.95 * Math.PI * 4) * 2.6 * (1 - g / 0.95); else gesto = null; }
+      else if (gesto.tipo === 'nao') { if (g < 0.9) P.cabX += Math.sin(g / 0.9 * Math.PI * 4) * 2.4 * (1 - g / 0.9); else gesto = null; }
+      else if (gesto.tipo === 'duvida') { if (g < 1.6) P.incl += Math.sin(Math.min(1, g / 0.35) * Math.PI / 2) * 0.13 * (g > 1.2 ? (1.6 - g) / 0.4 : 1); else gesto = null; }
+      else gesto = null;
+    }
+    pulso = Math.max(0, pulso - dt * 1.1);
+    if (r3) r3.quadro(P, { T, dt, k: entrada, som: nivelSom, falando, ouvindo: ouvindoAgora, pensando, pulso });
     else desenhar();
   };
-  requestAnimationFrame(quadro);
+  const iniciar = () => { rodando = true; ult = 0; requestAnimationFrame(quadro); };
+  iniciar();
   return ctrl;
 }
 
-export const rostoAberto = () => ATUAL;
+/** Rosto em tela cheia, se aberto; senão o avatar do console, se estiver na tela. */
+export const rostoAberto = () => ATUAL ?? (AVATAR?.ativo ? AVATAR : null);
+export const avatarConsole = () => AVATAR;
