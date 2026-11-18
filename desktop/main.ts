@@ -264,6 +264,8 @@ function createWindow() {
   win = new BrowserWindow({
     x: ej.x, y: ej.y, width: ej.width, height: ej.height, minWidth: 380, minHeight: 560,
     backgroundColor: '#071016', title: 'INSA Command', autoHideMenuBar: true, show: false,
+    // sem a barra de título do Windows: o HUD vai até a borda e os botões minimizar/maximizar/fechar ficam por cima, nas cores do app
+    titleBarStyle: 'hidden', titleBarOverlay: { color: '#060d18', symbolColor: '#a5f3fc', height: 34 },
     icon: join(publicDir(), 'icons', 'icon-512.png'),
     webPreferences: {
       // no modo nuvem a página é remota: recebe só a ponte de atualizações, nunca o acesso ao banco local
@@ -271,6 +273,14 @@ function createWindow() {
       contextIsolation: true, sandbox: true, nodeIntegration: false, spellcheck: false,
       devTools: !app.isPackaged,
     },
+  });
+  // a barra do topo do app passa a ser a alça da janela (arrastar move, dois cliques maximizam); o relógio sai de baixo dos botões
+  win.webContents.on('did-finish-load', () => {
+    win?.webContents.insertCSS(`
+      .hudtop .top { -webkit-app-region: drag; padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, calc(100vw - 150px)) + 14px) !important; }
+      .hudtop .top a, .hudtop .top button, .hudtop .top input, .hudtop .top select, .hudtop .top label { -webkit-app-region: no-drag; }
+      .puxa-manuel, .rosto, .toast, dialog { -webkit-app-region: no-drag; }
+    `).catch(() => {});
   });
   win.once('ready-to-show', () => {
     if (ej.maximizada) win?.maximize();

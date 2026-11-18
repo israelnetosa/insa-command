@@ -18,6 +18,7 @@ Centro de comando **privado** da carteira INSA Dividend Army. É a sucessora do 
 
 ## Novidades da 2.7 · Manuel sente a carteira, responde ao toque e avisa sozinho
 
+- **2.7.1 · Windows sem moldura:** a barra de título do Windows sumiu; o HUD vai até a borda da tela e os botões minimizar/maximizar/fechar ficam no canto, nas cores do app. Arrastar a barra do topo move a janela, dois cliques maximizam e F11 deixa em tela cheia total.
 - **Clima da carteira:** a expressão (sério, neutro, confiante, atento) e a cor do brilho atrás da cabeça acompanham o resultado do dia: âmbar em queda, verde-água em alta. Atualiza a cada carga de dados e no radar ao vivo.
 - **Toques no avatar:** um toque chama o Manuel (ele olha para onde tocou, acena e escuta); tocar enquanto ele fala o cala; dois toques pedem a leitura do dia. No terminal em tela cheia, tocar no rosto não fecha mais (fecha no ✕ ou puxando para cima).
 - **Dados holográficos:** quando ele cita um ativo, o patrimônio, o caixa ou a renda, cartões com o valor flutuam ao redor do rosto por alguns segundos (verde em alta, âmbar em queda).
