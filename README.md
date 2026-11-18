@@ -25,6 +25,7 @@ Centro de comando **privado** da carteira INSA Dividend Army. É a sucessora do 
 - **2.5.2 · como no conceito:** íris âmbar com pupila escura, fibras e reflexo (sem estourar), pescoço e ombros em malha de plexo que some para baixo, anéis dourados com linha nítida além das partículas, mais contraste (menos bloom) e botão em degradê com ícone de microfone.
 - **2.5.3 · volume:** sombreamento 3D próprio na malha (luz de frente-cima, laterais e sob o nariz/queixo mais escuras) com brilho azul profundo na silhueta, seguindo as expressões; bokeh ao fundo; menos estouro de brilho.
 - **2.5.4 · como na referência:** nós irregulares e cintilantes (tamanho e brilho variam e piscam), busto em plexo irregular (pontos ligados aos vizinhos), anéis dourados largos e incandescentes cruzando o rosto, rastro horizontal de luz nos olhos e borda turquesa.
+- **2.5.5 · corpo humano:** pescoço mais fino que a mandíbula e nascendo por trás dela, trapézio descendo até ombros arredondados, clavículas e esternocleidomastoideos discretos; tudo gerado de um lado e espelhado (simetria perfeita); o busto quase não gira com a cabeça.
 - Créditos: cabeça de exemplo "facecap" do three.js (Face Cap, Bannaflak), sem texturas.
 
 ## Novidades da 2.4 · "Hey Manuel"

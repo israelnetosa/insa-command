@@ -186,41 +186,54 @@ export async function criar(canvas, { forte = true, modelo = '/modelos/manuel.gl
     rastro.scale.set(r * 9, r * 1.1, 1); rastro.position.copy(frente); rastro.renderOrder = 5; rastro.userData.op = 0.55; rastro.userData.base = frente.clone(); grupoCabeca.add(rastro); brilhosOlho.push(rastro);
   }
   // busto (pescoço e ombros) em malha de plexo: superfície em grade com nós, fios e diagonais; some para baixo
+  // busto humano em plexo: pescoço que nasce sob a mandíbula, trapézio descendo até ombros arredondados,
+  // clavículas e esternocleidomastoideos discretos. Gerado só do lado direito e espelhado: simetria perfeita.
   const busto = (() => {
-    const N = forte ? 2600 : 1300, pts = [], cores = [], fios = [];
+    let sem = 20261118; const rnd = () => { sem = (sem * 1664525 + 1013904223) >>> 0; return sem / 4294967296; };
+    const N = forte ? 1300 : 700, pts = [], cores = [];
+    const lerp2 = (a, b, k) => a + (b - a) * k;
+    // superfície: u = 0 (centro) … 1 (lado), v = 0 (sob o queixo) … 1 (peito)
     const sup = (u, v) => {
-      const a = (u - 0.5) * Math.PI * 1.2, k = Math.max(0, (v - 0.3) / 0.7);
-      const larg = 0.36 + v * 0.1 + Math.pow(k, 0.75) * 1.4, prof = 0.28 + k * 0.3;
-      const y = -0.62 - v * 1.4 - k * Math.pow(Math.abs(Math.sin(a)), 1.4) * 0.45;
-      return [Math.sin(a) * larg, y, Math.cos(a) * prof - 0.22];
+      const a = u * Math.PI * 0.6, k = Math.max(0, (v - 0.28) / 0.72);
+      const larg = 0.3 + Math.min(v, 0.3) * 0.22 + Math.pow(k, 0.7) * 1.42, prof = 0.24 + k * 0.34;   // pescoço mais fino que a mandíbula
+      const x = Math.sin(a) * larg;
+      const desce = k * 0.5 * Math.pow(Math.min(1, x / 1.45), 1.35);            // trapézio caindo para o ombro
+      const ombro = Math.max(0, (x - 1.25) / 0.45);                                // deltoide arredondado
+      const y = -0.45 - v * 1.55 - desce - ombro * ombro * 0.28;   // começa por trás da mandíbula: a cabeça cobre o encaixe
+      const z = Math.cos(a) * prof - 0.3 + k * 0.08 - ombro * 0.12;
+      return [x, y, z];
     };
-    for (let i2 = 0; i2 < N; i2++) {
-      // mais pontos no pescoço e na linha dos ombros
-      const v = Math.random() < 0.35 ? Math.random() * 0.4 : 0.3 + Math.pow(Math.random(), 1.4) * 0.7, u = Math.random();
-      const [x, y, z] = sup(u, v); pts.push(x, y, z);
-      const f = 0.75 * Math.min(1, v / 0.12 + 0.25) * Math.pow(1 - v, 1.4) * (1 - Math.pow(Math.abs(u - 0.5) * 2, 3) * 0.7) * (0.5 + Math.random() * 0.8);
-      cores.push(CIANO.r * f, CIANO.g * f, CIANO.b * f);
+    const brilho = (u, v) => 0.75 * Math.min(1, v / 0.14 + 0.15) * Math.pow(1 - v, 1.35) * (1 - Math.pow(u, 3) * 0.6);
+    const add = (x, y, z, b) => { for (const sx of x < 0.005 ? [1] : [1, -1]) { pts.push(sx * x, y, z); cores.push(b, b, b); } };
+    for (let n = 0; n < N; n++) {
+      const v = rnd() < 0.3 ? rnd() * 0.32 : 0.25 + Math.pow(rnd(), 1.35) * 0.75, u = Math.pow(rnd(), 0.9);
+      const [x, y, z] = sup(u, v); add(x, y, z + (rnd() - 0.5) * 0.02, brilho(u, v) * (0.45 + rnd() * 0.6));
     }
-    // liga cada ponto aos 2 vizinhos mais próximos (grade espacial)
-    const cel = 0.16, grade = new Map(), ck = (x, y, z) => `${Math.floor(x / cel)},${Math.floor(y / cel)},${Math.floor(z / cel)}`;
-    for (let i2 = 0; i2 < N; i2++) { const k2 = ck(pts[i2 * 3], pts[i2 * 3 + 1], pts[i2 * 3 + 2]); (grade.get(k2) || grade.set(k2, []).get(k2)).push(i2); }
-    for (let i2 = 0; i2 < N; i2++) {
-      const x = pts[i2 * 3], y = pts[i2 * 3 + 1], z = pts[i2 * 3 + 2], viz = [];
-      for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {
+    // linhas anatômicas discretas sobre a superfície
+    const linha = (f, n, b) => { for (let k = 0; k <= n; k++) { const [u, v] = f(k / n); const [x, y, z] = sup(u, v); add(x, y, z + 0.01, b * brilho(u, v)); } };
+    linha((t) => [lerp2(0.62, 0.08, t), lerp2(0.02, 0.36, t)], 26, 0.75);        // esternocleidomastoideo
+    linha((t) => [lerp2(0.04, 0.78, t), 0.38 + Math.sin(t * Math.PI) * 0.025], 34, 0.8);   // clavícula
+    linha((t) => [lerp2(0.62, 1, t), lerp2(0.3, 0.42, t)], 26, 0.6);             // linha do trapézio ao ombro
+    const M = pts.length / 3;
+    for (let n = 0; n < M; n++) { const b = cores[n * 3]; cores[n * 3] = CIANO.r * b; cores[n * 3 + 1] = CIANO.g * b; cores[n * 3 + 2] = CIANO.b * b; }
+    // 3. plexo: cada ponto liga aos 3 vizinhos mais próximos
+    const fios = [], cel = 0.15, grade = new Map(), ck = (x, y, z) => `${Math.floor(x / cel)},${Math.floor(y / cel)},${Math.floor(z / cel)}`;
+    for (let n = 0; n < M; n++) { const k2 = ck(pts[n * 3], pts[n * 3 + 1], pts[n * 3 + 2]); (grade.get(k2) || grade.set(k2, []).get(k2)).push(n); }
+    for (let n = 0; n < M; n++) {
+      const x = pts[n * 3], y = pts[n * 3 + 1], z = pts[n * 3 + 2], viz = [];
+      for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++)
         for (const o of grade.get(`${Math.floor(x / cel) + dx},${Math.floor(y / cel) + dy},${Math.floor(z / cel) + dz}`) || []) {
-          if (o <= i2) continue; const d = (pts[o * 3] - x) ** 2 + (pts[o * 3 + 1] - y) ** 2 + (pts[o * 3 + 2] - z) ** 2; if (d < cel * cel) viz.push([d, o]);
+          if (o <= n) continue; const d = (pts[o * 3] - x) ** 2 + (pts[o * 3 + 1] - y) ** 2 + (pts[o * 3 + 2] - z) ** 2; if (d < cel * cel) viz.push([d, o]);
         }
-      }
-      viz.sort((a, b) => a[0] - b[0]).slice(0, 2).forEach(([, o]) => fios.push(i2, o));
+      viz.sort((a, b) => a[0] - b[0]).slice(0, 3).forEach(([, o]) => fios.push(n, o));
     }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(cores, 3)); g.setIndex(fios);
-    const rr = new Float32Array(N); for (let i2 = 0; i2 < N; i2++) rr[i2] = Math.random();
     const grupo = new THREE.Group();
-    const linhas = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false }));
+    const linhas = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.42, blending: THREE.AdditiveBlending, depthWrite: false }));
     const gP = new THREE.BufferGeometry(); gP.setAttribute('position', g.attributes.position); gP.setAttribute('color', g.attributes.color);
     const nosB = new THREE.Points(gP, new THREE.PointsMaterial({ vertexColors: true, size: forte ? 2.6 : 2.4, sizeAttenuation: false, map: ponto, transparent: true, opacity: 1, blending: THREE.AdditiveBlending, depthWrite: false }));
-    grupo.add(linhas, nosB); grupo.material = { set opacity(v) { linhas.material.opacity = 0.5 * v / 0.75; nosB.material.opacity = v / 0.75; } };
+    grupo.add(linhas, nosB); grupo.material = { set opacity(v) { linhas.material.opacity = 0.42 * v / 0.75; nosB.material.opacity = v / 0.75; } };
     return grupo;
   })();
   cena.add(busto);
@@ -357,7 +370,7 @@ export async function criar(canvas, { forte = true, modelo = '/modelos/manuel.gl
       // ── cabeça e busto ──
       grupoCabeca.rotation.y = P.cabX * 0.1 + ox * 0.1; grupoCabeca.rotation.x = P.cabY * 0.045 - 0.04; grupoCabeca.rotation.z = P.incl * 0.8;
       grupoCabeca.position.y = Math.sin(T * 0.8) * 0.012;
-      busto.rotation.y = grupoCabeca.rotation.y * 0.35;
+      busto.rotation.y = grupoCabeca.rotation.y * 0.15;
       const fade = k * k * (3 - 2 * k);
       fios.material.opacity = OP_FIOS * fade * (1 + (falando ? som * 0.5 : 0)); nos.material.opacity = OP_NOS * fade;
       cabeca.material.opacity = 0.94 * fade; busto.material.opacity = 0.75 * fade;
