@@ -4,7 +4,7 @@
 import { lerBanco, conferir, configurado as bancoConfigurado } from './banco';
 import { handleAuth, currentSession, isConfigured, json, type Env } from './auth';
 import { buildState, replay, planoCompras, faseAtual, LedgerError, type Movement } from './engine';
-import { conversar, voz, explicarErro, CONFIG_PADRAO, type Toolkit, type IAConfig } from './manuel';
+import { conversar, voz, transcrever, explicarErro, CONFIG_PADRAO, type Toolkit, type IAConfig } from './manuel';
 import { responderLocal, normalizar } from './local';
 import { VOZES_MASCULINAS } from './fala.ts';
 import { refreshQuotes, liveRefresh, emPregao, pregao, INDICES, fetchQuote } from './market';
@@ -381,6 +381,30 @@ async function api(req: Request, env: Env, url: URL): Promise<Response> {
     const movId = await gravar(env, m, 'ia_confirmada');
     await env.DB.prepare(`UPDATE propostas SET status = 'confirmada', resolvida_em = datetime('now'), movimento_id = ? WHERE id = ?`).bind(movId, id).run();
     return json({ ok: true, status: 'confirmada', movimento_id: movId });
+  }
+
+  // Ouvir: transcreve um áudio curto (Windows e reserva do Android). Conta no uso de IA do dia.
+  if (path === '/api/manuel/ouvir' && req.method === 'POST') {
+    if (!env.GEMINI_API_KEY) return json({ erro: 'Ouvir pelo PC requer a chave do Gemini.' }, 400);
+    const body: any = await req.json().catch(() => ({}));
+    const audio = String(body.audio ?? ''), mime = String(body.mime ?? '');
+    if (!audio || audio.length > 2_800_000 || !/^audio\/[a-z0-9.+-]+(;\s*codecs=[a-z0-9.,"]+)?$/i.test(mime)) return json({ erro: 'Áudio inválido ou longo demais (máx. ~60 s).' }, 400);
+    try {
+      const r = await transcrever(audio, mime.split(';')[0], env.GEMINI_API_KEY, fetch);
+      await env.DB.prepare(`INSERT INTO ia_uso (dia, chamadas, entrada, saida) VALUES (?, 1, ?, ?)
+        ON CONFLICT(dia) DO UPDATE SET chamadas = chamadas + 1, entrada = entrada + excluded.entrada, saida = saida + excluded.saida`).bind(hojeISO(), r.uso.entrada, r.uso.saida).run();
+      return json({ texto: r.texto });
+    } catch (e) { return json({ erro: (e as Error).message }, 502); }
+  }
+
+  // Saudação diária: leitura do dia pelo motor local (0 tokens), sem entrar no histórico da conversa
+  if (path === '/api/manuel/saudacao' && req.method === 'GET') {
+    const tk = toolkit(env);
+    const r = await responderLocal('leitura do dia', tk, new Date(), true).catch(() => null);
+    const st = await tk.state();
+    return json({ texto: r?.texto ?? '', resultado_dia: st.totais.resultado_dia ?? 0, patrimonio: st.totais.patrimonio,
+      variacao_pct: st.totais.patrimonio ? (st.totais.resultado_dia ?? 0) / (st.totais.patrimonio - (st.totais.resultado_dia ?? 0)) * 100 : 0,
+      alertas: (st.alertas || []).length, em_ataque: st.missao?.em_ataque ?? 0 });
   }
 
   if (path === '/api/manuel/voz' && req.method === 'POST') {

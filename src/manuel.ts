@@ -328,6 +328,31 @@ export async function voz(texto: string, key: string, voice: string, f: Fetch) {
   return wav(base64ToBytes(part.inlineData.data), rate);
 }
 
+/** Transcreve uma fala curta (pt-BR) com o Gemini mais leve. Números saem em algarismos. */
+export async function transcrever(audioB64: string, mime: string, key: string, f: Fetch) {
+  const { lites, flash } = await modelosGemini(key, f);
+  let ultimo: Error | null = null;
+  for (const modelo of [...lites.slice(0, 2), flash]) {
+    const r = await f(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelo)}:generateContent`, {
+      method: 'POST', signal: AbortSignal.timeout(30000),
+      headers: { 'x-goog-api-key': key, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [
+          { inlineData: { mimeType: mime, data: audioB64 } },
+          { text: 'Transcreva exatamente esta fala em português do Brasil. Escreva números e valores em algarismos (ex.: 500, 97,80, R$ 12,35) e códigos de ativos da B3 em maiúsculas (ex.: BTLG11). Responda só com a transcrição, sem comentários. Se não houver fala, responda vazio.' },
+        ] }],
+        generationConfig: { temperature: 0, maxOutputTokens: 200, thinkingConfig: { thinkingBudget: 0 } },
+      }),
+    });
+    if (r.status === 429 || r.status >= 500) { ultimo = new Error(`Gemini (transcrição) respondeu ${r.status}`); continue; }
+    if (!r.ok) throw new Error(`Gemini (transcrição) respondeu ${r.status}`);
+    const j: any = await r.json();
+    const texto = (j.candidates?.[0]?.content?.parts ?? []).map((p: any) => p.text ?? '').join('').trim().replace(/^"|"$/g, '');
+    return { texto: texto.slice(0, 500), uso: { entrada: j.usageMetadata?.promptTokenCount ?? 0, saida: j.usageMetadata?.candidatesTokenCount ?? 0 } };
+  }
+  throw ultimo ?? new Error('Transcrição indisponível.');
+}
+
 function base64ToBytes(b64: string) {
   const bin = atob(b64); const out = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);

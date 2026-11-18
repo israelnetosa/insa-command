@@ -17,6 +17,9 @@ import migration0003 from '../migrations/0003_manuel.sql';
 import migration0004 from '../migrations/0004_dispositivos.sql';
 import migration0005 from '../migrations/0005_ia_cache.sql';
 
+// o M.A.N.U.E.L. pode cumprimentar com voz ao abrir, sem esperar um clique
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+
 const SCHEME = 'insa';
 const ORIGIN = `${SCHEME}://app`;
 // Modo nuvem: o PC abre a nuvem do dono em vez do banco local
@@ -294,7 +297,10 @@ function createWindow() {
   const origemOk = NUVEM ?? ORIGIN;
   win.webContents.on('will-navigate', (e, url) => { if (!url.startsWith(origemOk)) { e.preventDefault(); if (url.startsWith('https://')) shell.openExternal(url); } });
   win.webContents.setWindowOpenHandler(({ url }) => { if (url.startsWith('https://')) shell.openExternal(url); return { action: 'deny' }; });
-  win.webContents.session.setPermissionRequestHandler((_wc, perm, cb) => cb(perm === 'notifications' || perm === 'clipboard-sanitized-write'));
+  win.webContents.session.setPermissionRequestHandler((_wc, perm, cb, det: any) => cb(perm === 'notifications' || perm === 'clipboard-sanitized-write'
+    // microfone (só áudio) para falar com o M.A.N.U.E.L.; câmera continua bloqueada
+    || (perm === 'media' && Array.isArray(det?.mediaTypes) && det.mediaTypes.length > 0 && det.mediaTypes.every((m: string) => m === 'audio'))));
+  win.webContents.session.setPermissionCheckHandler((_wc, perm, _o, det: any) => perm !== 'media' || det?.mediaType === 'audio' || det?.mediaType === 'unknown');
   win.loadURL(NUVEM ? `${NUVEM}/#/cockpit` : `${ORIGIN}/#/cockpit`);
 }
 

@@ -1,7 +1,7 @@
 {
   "name": "insa-command",
   "productName": "INSA Command",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "Centro de comando privado da carteira INSA Dividend Army",
   "author": "Israel",
   "license": "UNLICENSED",
@@ -25,6 +25,7 @@
     "deploy": "npm run build:web && npm test && wrangler deploy"
   },
   "dependencies": {
+    "@capacitor-community/speech-recognition": "7.0.1",
     "electron-updater": "^6.8.11"
   },
   "devDependencies": {

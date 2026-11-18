@@ -519,3 +519,31 @@ button, a, input, select, textarea, label { touch-action: manipulation; -webkit-
   .leituras .kpi .val { font-size: 24px; }
   .leituras .kpi .label { letter-spacing: .12em; }
 }
+
+/* ───────── M.A.N.U.E.L. em tela cheia (rosto de fios) e voz ───────── */
+.rosto { position: fixed; inset: 0; z-index: 90; background: radial-gradient(ellipse at 50% 42%, rgba(8,30,44,.92), rgba(2,6,12,.97) 70%);
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); animation: rosto-entra .35s ease-out both; touch-action: none; }
+.rosto.saindo { animation: rosto-sai .5s ease-in both; }
+@keyframes rosto-entra { from { opacity: 0; } to { opacity: 1; } }
+@keyframes rosto-sai { to { opacity: 0; } }
+.rosto-cv { position: absolute; inset: 0; width: 100%; height: 100%; }
+.rosto-topo { position: absolute; left: 0; right: 0; top: max(14px, env(safe-area-inset-top)); display: flex; align-items: center; gap: 12px; padding: 0 18px; }
+.rosto-nome { font: 700 15px var(--head); letter-spacing: .32em; color: #a5f3fc; }
+.rosto-estado { font: 400 11px var(--mono); letter-spacing: .2em; text-transform: uppercase; color: #ffb347; }
+.rosto-estado::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: currentColor; margin-right: 7px; vertical-align: 1px; box-shadow: 0 0 8px currentColor; animation: pisca 1.4s infinite; }
+.rosto.ouvindo .rosto-estado { color: #34f5a4; }
+.rosto-x { margin-left: auto; background: rgba(5,10,20,.6); border: 1px solid rgba(72,229,255,.4); color: #a5f3fc; width: 40px; height: 40px; border-radius: 50%; font-size: 16px; cursor: pointer; }
+.rosto-baixo { position: absolute; left: 0; right: 0; bottom: max(18px, env(safe-area-inset-bottom)); display: grid; justify-items: center; gap: 12px; padding: 0 18px; }
+.rosto-legenda { margin: 0; max-width: 680px; max-height: 26vh; overflow: auto; text-align: center; font: 500 clamp(15px, 4.2vw, 19px)/1.45 var(--body, system-ui); color: #e6fbff; text-shadow: 0 0 12px rgba(72,229,255,.35); }
+.rosto-legenda:empty { display: none; }
+.rosto-mic, .mic { user-select: none; -webkit-user-select: none; touch-action: none; cursor: pointer; }
+.rosto-mic { font: 600 14px var(--head); letter-spacing: .12em; text-transform: uppercase; color: #02070c; background: #48e5ff; border: 0; padding: 14px 26px; border-radius: 999px; box-shadow: 0 0 22px rgba(72,229,255,.45); }
+.rosto-mic.ativo, .mic.ativo { background: #34f5a4; box-shadow: 0 0 0 6px rgba(52,245,164,.18), 0 0 26px rgba(52,245,164,.55); }
+.mic { display: inline-grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; border: 1px solid rgba(72,229,255,.55); background: rgba(5,10,20,.7); color: #a5f3fc; font-size: 18px; }
+.mic-flutua { position: fixed; z-index: 30; right: 16px; bottom: calc(150px + env(safe-area-inset-bottom)); width: 54px; height: 54px; font-size: 22px; box-shadow: 0 0 18px rgba(72,229,255,.3); }
+@media (min-width: 1001px) { .mic-flutua { bottom: 96px; right: 26px; } }
+html.com-rosto body { overflow: hidden; }
+.desfazer { position: fixed; left: 50%; bottom: calc(86px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 95; display: flex; gap: 14px; align-items: center;
+  background: rgba(5,10,20,.95); border: 1px solid rgba(72,229,255,.5); padding: 10px 14px; font: 400 13px var(--mono); color: var(--tx); }
+.desfazer button { background: none; border: 0; color: #ffb347; font: 700 13px var(--head); letter-spacing: .14em; text-transform: uppercase; cursor: pointer; }
+@media (prefers-reduced-motion: reduce) { .rosto, .rosto.saindo { animation: none; } }

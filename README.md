@@ -16,6 +16,16 @@ Centro de comando **privado** da carteira INSA Dividend Army. É a sucessora do 
 | Peso do app | 412 KB de JS | 35 KB (12 KB comprimido) |
 | Hospedagem | Presa ao Manus | Sua conta Cloudflare (plano gratuito) |
 
+## Novidades da 2.3 · Manuel fala, ouve e aparece
+
+- **Segure para falar:** botão de microfone em todas as telas e no console. Toque curto ouve por até 8 s; segurar ouve até soltar. No Android usa o reconhecedor do próprio telemóvel (grátis); no Chrome, o do navegador; no Windows, grava e o Gemini transcreve (conta no uso de IA do dia).
+- **Chamada e comandos:** "hey Manuel", "bom dia Manuel", "Manuel, leitura do dia". "Vamos registrar um aporte" → ele pergunta o valor → repete a proposta → só "confirmo" (ou o botão) grava. Números falados por extenso viram algarismos ("noventa e sete e oitenta" → 97,80).
+- **Rosto de fios em tela cheia:** quando fala por voz, o Manuel toma a tela como um rosto feito dos fios do núcleo, com rodas em volta. Boca por visemas do português, sincronizada com o áudio (volume real na voz natural; início de cada palavra na voz do aparelho). Olhar que segue o dedo, piscar, e humor pelo dia da carteira (confiante, neutro, atento, sério). Legenda sempre visível.
+- **Cumprimento diário:** ao abrir o app pela primeira vez no dia, saudação + leitura do dia (motor local, 0 tokens) + uma frase de motivação. Toque interrompe.
+- **Limpar conversa** sem confirmação, com 5 s para desfazer.
+- Preferências por aparelho em Ajustes → M.A.N.U.E.L.: rosto em tela cheia, cumprimento diário e botão de microfone.
+- "Hey Manuel" com o app aberto, sem tocar em nada (escuta contínua), fica para a próxima fase.
+
 ## Novidades da 2.2 · Núcleo vivo em alta resolução
 
 - **Resolução nativa:** em aparelhos fortes (8 núcleos ou mais, como o Galaxy S24 Ultra), o toro é desenhado na densidade real da tela, até 3×, em vez de 0,8× como antes no celular.

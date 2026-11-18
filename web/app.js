@@ -1,11 +1,14 @@
 // INSA Command · interface (PWA). Sem frameworks, sem rastreadores.
 import { ophanim, ligarOphanim } from './ophanim.js';
 import { paraFala, VOZES_MASCULINAS } from '../src/fala.ts';
+import { ouvir, podeOuvir, interpretar, lerProposta, tirarChamada } from './voz.js';
+import { abrirRosto, rostoAberto } from './rosto.js';
 
 const $app = document.getElementById('app');
 const CACHE_KEY = 'insa_state_v1';
 let S = null;              // estado atual vindo do servidor
 let offline = false;
+let SAUDOU = false;          // cumprimento diário: tentado uma vez por abertura
 const DESK = window.insaDesktop || null;   // presente só no app de Windows em modo local
 const SHELL = window.insaShell || null;    // presente no app de Windows em modo nuvem (só atualizações)
 let UPD = null;                            // último estado de atualização
@@ -19,6 +22,8 @@ const sign = (n) => (n > 0 ? 'pos' : n < 0 ? 'neg' : '');
 const hoje = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 const cacheGet = () => { try { return JSON.parse(localStorage.getItem(CACHE_KEY) || 'null'); } catch { return null; } };
 const cacheSet = (v) => { try { localStorage.setItem(CACHE_KEY, JSON.stringify(v)); } catch {} };
+const pref = (k, padrao = true) => { try { const v = localStorage.getItem('insa.pref.' + k); return v == null ? padrao : v === '1'; } catch { return padrao; } };
+const setPref = (k, v) => { try { localStorage.setItem('insa.pref.' + k, v ? '1' : '0'); } catch {} };
 const cacheClear = () => { try { localStorage.removeItem(CACHE_KEY); } catch {} };
 
 async function api(path, opts = {}) {
@@ -131,12 +136,14 @@ function frame(view, inner) {
   <nav class="tabs" aria-label="Seções">${NAV.filter(n => PRINCIPAIS.includes(n[0])).map(([id, , t, i]) => `<a href="#/${id}" class="${view === id ? 'on' : ''}" ${view === id ? 'aria-current="page"' : ''}><i aria-hidden="true">${i}</i>${id === 'manuel' ? 'Manuel' : t}</a>`).join('')}
     <button type="button" class="${PRINCIPAIS.includes(view) ? '' : 'on'}" id="mais" aria-haspopup="dialog" aria-expanded="false"><i aria-hidden="true">☰</i>Mais</button></nav>
   ${['cockpit', 'posicoes', 'radar'].includes(view) ? '<a class="fab" href="#/registrar" aria-label="Registrar lançamento">＋</a>' : ''}
+  ${view !== 'manuel' && podeOuvir() && pref('mic') ? '<button type="button" class="mic mic-flutua" id="micf" aria-label="Segure para falar com o Manuel" title="Segure para falar com o Manuel">🎙</button>' : ''}
   <div class="folha" id="folha" hidden><div class="folha-fundo" data-fecha></div><div class="folha-painel" role="dialog" aria-label="Mais seções">
     <div class="folha-alca" aria-hidden="true"></div>
     ${NAV.filter(n => !PRINCIPAIS.includes(n[0])).map(([id, , t, i]) => `<a href="#/${id}" class="${view === id ? 'on' : ''}"><i aria-hidden="true">${i}</i>${t}</a>`).join('')}
   </div></div>`;
   const folha = document.getElementById('folha'), mais = document.getElementById('mais');
   const abreFolha = (abrir) => { folha.hidden = !abrir; mais.setAttribute('aria-expanded', String(abrir)); };
+  ligarMic(document.getElementById('micf'));
   mais.onclick = () => abreFolha(folha.hidden);
   folha.addEventListener('click', (e) => { if (e.target.closest('[data-fecha], a')) abreFolha(false); });
   tick();
@@ -474,7 +481,11 @@ function ajustes() {
             <label>Voz do aparelho (só neste aparelho)<select id="vozap"><option value="">automática (masculina, se houver)</option></select></label>
             <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="fala_auto" style="width:auto;min-height:0"> Falar as respostas automaticamente</label>
           </form>
-          <div class="actions"><button class="btn ghost" id="cfgsave">Salvar configuração</button><button class="btn ghost" id="voztest">Testar voz</button></div></details></div>
+          <div class="kv" style="margin-top:10px"><b>Neste aparelho</b></div>
+          <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="pf-rosto" style="width:auto;min-height:0" ${pref('rosto') ? 'checked' : ''}> Rosto do Manuel em tela cheia quando ele fala</label>
+          <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="pf-saudacao" style="width:auto;min-height:0" ${pref('saudacao') ? 'checked' : ''}> Cumprimento com o relatório do dia (1 vez por dia, ao abrir)</label>
+          <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="pf-mic" style="width:auto;min-height:0" ${pref('mic') ? 'checked' : ''} ${podeOuvir() ? '' : 'disabled'}> Botão de microfone nas telas ${podeOuvir() ? '' : '(este aparelho não permite ouvir)'}</label>
+          <div class="actions"><button class="btn ghost" id="cfgsave">Salvar configuração</button><button class="btn ghost" id="voztest">Testar voz</button><button class="btn ghost" id="saudtest">Cumprimento agora</button></div></details></div>
       <div class="card"><h2>Backup</h2><p class="muted">${DESK ? 'Seus dados ficam só neste computador. Faça cópias regulares.' : 'Exporta todo o razão, ativos e configuração em JSON.'}</p><div class="actions"><button class="btn ghost" id="exp">Exportar JSON</button>${DESK ? '<button class="btn ghost" id="dbbak">Copiar banco completo</button><button class="btn ghost" id="dbdir">Abrir pasta de dados</button>' : ''}</div></div>
       ${DESK ? `<div class="card"><h2>Nuvem e celular</h2><p class="muted">Envia a sua carteira para a sua nuvem (Cloudflare) e passa a usar os mesmos dados no PC e no celular. Os dados locais ficam guardados como cópia.</p>
           <form id="nuvemf"><label>Endereço da nuvem<input name="url" type="url" placeholder="https://insa-command.SEU-NOME.workers.dev" required></label>
@@ -552,6 +563,8 @@ function ajustes() {
     await api('/api/manuel/config', { method: 'POST', body }); toast('Configuração do M.A.N.U.E.L. salva.');
     if (CONV) CONV.config = { ...CONV.config, ...body };
   });
+  for (const k of ['rosto', 'saudacao', 'mic']) document.getElementById('pf-' + k)?.addEventListener('change', (e) => { setPref(k, e.target.checked); toast('Preferência salva neste aparelho.'); });
+  document.getElementById('saudtest')?.addEventListener('click', () => saudacaoDiaria(true));
   // vozes instaladas no aparelho (pt-BR); a escolha fica guardada só neste aparelho
   const vozap = document.getElementById('vozap');
   const listarVozes = () => { if (!vozap || !('speechSynthesis' in window)) return;
@@ -810,13 +823,14 @@ const AUDIO_CACHE = new Map();   // mesma fala tocada de novo não gasta outra c
 // Cada chamada tem uma "geração"; se outra falar()/pararFala() acontecer antes do áudio
 // carregar (ex.: o Senhor clicou "ouvir" de novo por estar demorando), a geração antiga
 // é descartada ao chegar — nunca toca por cima da mais nova (evita a voz dobrada).
-function falar(texto, botao) {
+function falar(texto, botao, { tela = false } = {}) {
   pararFala();
   const minhaGeracao = FALA_GERACAO;
   const cfg = CONV?.config || {};
-  if (cfg.voz_motor === 'desligada') return;
   const limpo = paraFala(texto);
   if (!limpo) return;
+  const rosto = tela && pref('rosto') ? abrirRostoManuel() : rostoAberto();
+  if (cfg.voz_motor === 'desligada') { rosto?.legenda(texto); return; }
   if (botao) { botao.disabled = true; botao.dataset.rotuloOriginal ??= botao.textContent; botao.textContent = '⏳ carregando…'; }
   const restaurarBotao = () => { if (botao) { botao.disabled = false; botao.textContent = botao.dataset.rotuloOriginal; } };
   if (cfg.voz_motor === 'gemini' && CONV?.chaves?.gemini) {
@@ -828,7 +842,13 @@ function falar(texto, botao) {
     pronto.then(u => {
       restaurarBotao();
       if (minhaGeracao !== FALA_GERACAO) return;   // já foi cancelada por um novo pedido: não toca
-      AUDIO = new Audio(u); AUDIO.onplay = () => holoEstado('falando'); AUDIO.onended = AUDIO.onpause = () => holoEstado(null); return AUDIO.play();
+      AUDIO = new Audio(u); AUDIO.onplay = () => holoEstado('falando'); AUDIO.onended = AUDIO.onpause = () => { holoEstado(null); rostoAberto()?.calar(); };
+      rostoAberto()?.falar(limpo, { audio: AUDIO });
+      const audio = AUDIO;
+      return AUDIO.play().catch((e) => {   // som automático bloqueado: mostra a legenda e toca no primeiro toque
+        const r = rostoAberto(); if (!r || e?.name !== 'NotAllowedError') throw e;
+        r.calar(); r.aguardarToque(() => { r.falar(limpo, { audio }); audio.play().catch(() => {}); });
+      });
     }).catch(e => {
       restaurarBotao(); AUDIO_CACHE.delete(chave);
       if (minhaGeracao !== FALA_GERACAO) return;
@@ -837,6 +857,7 @@ function falar(texto, botao) {
     return;
   }
   restaurarBotao();
+  rostoAberto()?.falar(limpo, { porPalavra: true });
   falarAparelho(limpo);
 }
 // Voz do aparelho: uma fala só (sem picotar por linha), voz masculina pt-BR quando existir, ritmo natural
@@ -852,15 +873,138 @@ function falarAparelho(texto) {
   const blocos = []; let atual = '';
   for (const f of frases) { if ((atual + f).length > 220 && atual) { blocos.push(atual); atual = f; } else atual += f; }
   if (atual.trim()) blocos.push(atual);
+  let base = 0;
   blocos.forEach((b, k) => {
     const u = new SpeechSynthesisUtterance(b.trim());
+    const ini = base; base += b.length;
+    u.onboundary = (e) => rostoAberto()?.posicao(ini + (e.charIndex || 0));
     u.voice = voz; u.lang = 'pt-BR'; u.rate = 1; u.pitch = voz && /antonio|daniel|ptd|male|masculin/i.test(voz.name) ? 1 : 0.85;
     if (k === 0) u.onstart = () => holoEstado('falando');
-    if (k === blocos.length - 1) u.onend = u.onerror = () => holoEstado(null);
+    if (k === blocos.length - 1) u.onend = u.onerror = () => { holoEstado(null); rostoAberto()?.calar(); };
     speechSynthesis.speak(u);
   });
 }
-function pararFala() { FALA_GERACAO++; try { speechSynthesis.cancel(); } catch {} if (AUDIO) { AUDIO.pause(); AUDIO = null; } holoEstado(null); }
+function pararFala() { FALA_GERACAO++; try { speechSynthesis.cancel(); } catch {} if (AUDIO) { AUDIO.pause(); AUDIO = null; } holoEstado(null); rostoAberto()?.calar(); }
+
+// ───────── voz: ouvir o Comandante, o rosto em tela cheia e o cumprimento diário ─────────
+const VOZ = { aguardando: null, prop: null, ouvindo: null };
+function estadoHumor() {
+  const t = S?.totais || {}, base = (t.patrimonio || 0) - (t.resultado_dia || 0);
+  return { variacao_pct: base ? (t.resultado_dia || 0) / base * 100 : 0, alertas: (S?.alertas || []).length };
+}
+function abrirRostoManuel() {
+  return abrirRosto({ estado: estadoHumor(), aoFechar: () => { pararFala(); VOZ.ouvindo?.parar(); VOZ.ouvindo = null; }, aoMicrofone: podeOuvir() ? (b) => ligarMic(b) : null });
+}
+const ehLongo = (t) => String(t || '').length > 420;
+async function processarFala(falado) {
+  const r = rostoAberto() ?? abrirRostoManuel();
+  if (!falado) { r.ouvindo(false); r.legenda('Não ouvi nada, Comandante. Segure o botão e fale.'); return; }
+  r.ouvindo(false); r.legenda('“' + falado + '”');
+  const a = interpretar(falado, { pendente: !!VOZ.prop, aguardando: VOZ.aguardando });
+  if (a.tipo === 'nada') return;
+  if (a.tipo === 'parar') { pararFala(); r.fechar(); return; }
+  if (a.tipo === 'limpar') { limparConversa(); falar('Conversa limpa, Comandante.', null, { tela: true }); return; }
+  if (a.tipo === 'perguntar') { VOZ.aguardando = a.aguardar; falar(a.fala, null, { tela: true }); return; }
+  if (a.tipo === 'confirmar' || a.tipo === 'recusar') {
+    const p = VOZ.prop; VOZ.prop = null;
+    try {
+      const res = await api(`/api/manuel/propostas/${p.id}/${a.tipo === 'confirmar' ? 'confirmar' : 'recusar'}`, { method: 'POST', body: {} });
+      falar(res.status === 'confirmada' ? 'Gravado no razão, Comandante.' : 'Proposta descartada.', null, { tela: true });
+      if (res.status === 'confirmada') { await load().catch(() => {}); }
+      atualizarConsole();
+    } catch (e) { falar('Não consegui concluir: ' + e.message, null, { tela: true }); }
+    return;
+  }
+  VOZ.aguardando = null; r.pensar(); holoEstado('pensando');
+  try {
+    const res = await api('/api/manuel/mensagem', { method: 'POST', body: { texto: a.texto } });
+    const pend = (res.propostas || []).find(p => p.status === 'pendente');
+    if (pend) { VOZ.prop = pend; falar(lerProposta(pend, brl), null, { tela: true }); r.legenda(lerProposta(pend, brl)); }
+    else { falar(ehLongo(res.texto) ? res.texto.slice(0, 900) : res.texto, null, { tela: true }); r.legenda(res.texto); }
+    atualizarConsole();
+  } catch (e) { holoEstado(null); falar('Falha: ' + e.message, null, { tela: true }); }
+}
+function atualizarConsole() { if ((location.hash.slice(2) || '').split('?')[0] === 'manuel') manuel().catch(() => {}); }
+
+/** Liga um botão de "segure para falar" (toque curto: ouve até 8 s ou até tocar de novo). */
+function ligarMic(btn) {
+  if (!btn || btn._insaMic) return; btn._insaMic = true;
+  let inicio = 0, sessao = null, curto = false, tempo = 0;
+  const comecar = () => {
+    if (sessao) return;
+    pararFala();
+    const r = rostoAberto() ?? abrirRostoManuel();
+    r.ouvindo(true, '');
+    btn.classList.add('ativo'); navigator.vibrate?.(10);
+    sessao = ouvir({ api, aoParcial: (t) => rostoAberto()?.ouvindo(true, t) });
+    VOZ.ouvindo = sessao;
+    const s = sessao;
+    s.texto.then((t) => { if (s === sessao) terminar(); processarFala(t); })
+      .catch((e) => { if (s === sessao) terminar(); rostoAberto()?.ouvindo(false); rostoAberto()?.legenda(e.message || 'Falha ao ouvir.'); });
+  };
+  const terminar = () => { clearTimeout(tempo); btn.classList.remove('ativo'); sessao = null; VOZ.ouvindo = null; };
+  const parar = () => { const s = sessao; if (s) s.parar(); };
+  btn.addEventListener('pointerdown', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    if (sessao && curto) { curto = false; parar(); return; }
+    inicio = performance.now(); comecar();
+    try { btn.setPointerCapture(e.pointerId); } catch {}
+  });
+  const soltar = (e) => {
+    e?.stopPropagation?.();
+    if (!sessao) return;
+    if (performance.now() - inicio < 300) { curto = true; clearTimeout(tempo); tempo = setTimeout(() => { curto = false; parar(); }, 8000); return; }
+    parar();
+  };
+  btn.addEventListener('pointerup', soltar); btn.addEventListener('pointercancel', soltar);
+  btn.addEventListener('click', (e) => e.stopPropagation());
+}
+
+const MOTIVACAO = [
+  'Cada cota comprada hoje é um soldado que trabalha para o Senhor todos os meses.',
+  'Disciplina vence o humor do mercado. O plano segue firme.',
+  'Os juros compostos são lentos no início e implacáveis no fim. Continue alimentando a máquina.',
+  'Dia de queda é dia de preço melhor para quem pensa em décadas.',
+  'A renda passiva se constrói em silêncio, aporte após aporte.',
+  'Quem reinveste os proventos não espera o futuro: fabrica o futuro.',
+  'Constância é a vantagem que nenhum mercado tira do Senhor.',
+  'O exército cresce um pelotão de cada vez. Hoje é mais um passo.',
+  'Paciência não é esperar. É manter o plano enquanto o tempo trabalha.',
+  'Pequenos aportes, repetidos sem falhar, viram grandes rendas.',
+  'O mercado oscila; a estratégia, não. Seguimos na rota.',
+  'Cada provento reinvestido é uma bola de neve ganhando massa.',
+];
+async function saudacaoDiaria(forcar = false) {
+  if (!forcar && (!pref('saudacao') || localStorage.getItem('insa.saudacao.dia') === hoje())) return;
+  try { localStorage.setItem('insa.saudacao.dia', hoje()); } catch {}
+  try {
+    if (!CONV) CONV = await api('/api/manuel/conversa').catch(() => null);
+    const sd = await api('/api/manuel/saudacao');
+    const h = new Date().getHours();
+    const oi = h < 12 ? 'Bom dia' : h < 19 ? 'Boa tarde' : 'Boa noite';
+    const leitura = String(sd.texto || '').replace(/^Senhor,?\s*/i, '').split('\n').filter(Boolean).slice(0, 3).join(' ');
+    const dia = Math.floor(Date.now() / 86400000);
+    const msg = `${oi}, Comandante. ${leitura} ${MOTIVACAO[dia % MOTIVACAO.length]}`;
+    if (!pref('rosto')) { falar(msg); return; }
+    const r = abrirRostoManuel(); r.humor({ variacao_pct: sd.variacao_pct, alertas: sd.alertas });
+    falar(msg, null, { tela: true }); r.legenda(msg);
+  } catch { /* sem saudação hoje: não atrapalha o app */ }
+}
+function limparConversa() {
+  const th = document.getElementById('thread');
+  const antes = th?.innerHTML;
+  if (th) th.innerHTML = '<div class="empty"><p>Conversa limpa.</p></div>';
+  document.querySelector('.desfazer')?.remove();
+  const bar = document.createElement('div'); bar.className = 'desfazer';
+  bar.innerHTML = '<span>Conversa limpa</span><button type="button">Desfazer</button>';
+  document.body.appendChild(bar);
+  let desfeito = false;
+  bar.querySelector('button').onclick = () => { desfeito = true; bar.remove(); if (th && document.body.contains(th)) th.innerHTML = antes; };
+  setTimeout(async () => {
+    bar.remove(); if (desfeito) return;
+    try { await api('/api/manuel/limpar', { method: 'POST', body: {} }); if (CONV) CONV.mensagens = []; } catch (e) { toast(e.message); if (th && document.body.contains(th)) th.innerHTML = antes; }
+  }, 5000);
+}
 
 async function manuel() {
   CONV = await api('/api/manuel/conversa');
@@ -883,7 +1027,7 @@ async function manuel() {
       <div class="atalhos">${['Leitura do dia', 'Onde aplico R$ 500?', 'Zona de ataque', 'Magic Number', 'Quando chego no próximo marco?', 'Renda do mês', 'ia: notícias e proventos anunciados do BTLG11'].map(a => `<button class="chipbtn" data-atalho="${esc(a)}">${esc(a)}</button>`).join('')}</div>
       <form id="cf" class="composer"><label class="sr" for="ct">Mensagem</label>
         <textarea id="ct" name="t" rows="2" maxlength="4000" placeholder="Ex.: comprei 3 BTLG11 a 97,80 · onde aplico R$ 500? · ia: pergunta aberta"></textarea>
-        <button class="btn">Enviar</button></form>
+        ${podeOuvir() ? '<button type="button" class="mic" id="micc" aria-label="Segure para falar com o Manuel" title="Segure para falar">🎙</button>' : ''}<button class="btn">Enviar</button></form>
       <p class="faint">Perguntas de dado puro (leitura, zona, Magic Number, marcos, renda, um ativo) o próprio app responde na hora, 0 tokens. O resto — opinião, sugestão, cenário, bate-papo — já vai para a IA sozinho; o prefixo <b>ia:</b> só força a IA mesmo quando a pergunta parece simples.</p>
       <p class="faint">M.A.N.U.E.L. analisa e organiza; não envia ordens nem é recomendação de investimento. Lançamentos só entram no razão com o seu clique.</p>
     </div>`);
@@ -924,10 +1068,11 @@ async function manuel() {
   ta.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar(ta.value); } });
   document.querySelectorAll('[data-atalho]').forEach(b => b.onclick = () => enviar(b.dataset.atalho));
   document.getElementById('parar').onclick = pararFala;
-  document.getElementById('limpar').onclick = async () => { if (!confirm('Limpar a conversa? Lançamentos e propostas não são afetados.')) return; await api('/api/manuel/limpar', { method: 'POST', body: {} }); manuel(); };
+  document.getElementById('limpar').onclick = () => limparConversa();
+  ligarMic(document.getElementById('micc'));
   th.addEventListener('click', async (e) => {
     const t = e.target.closest('button'); if (!t) return;
-    if (t.dataset.falar !== undefined) { const balao = t.closest('.balao'); falar(balao.innerText.replace(/🔊 ouvir[\s\S]*$/, ''), t); return; }
+    if (t.dataset.falar !== undefined) { const balao = t.closest('.balao'); falar(balao.innerText.replace(/🔊 ouvir[\s\S]*$/, ''), t, { tela: true }); return; }
     const id = t.dataset.conf || t.dataset.rec; if (!id) return;
     t.disabled = true;
     try {
@@ -962,6 +1107,7 @@ async function route(view) {
     if (!S) await load();
     await ({ cockpit, manuel, radar, posicoes, registrar: () => registrar(new URLSearchParams(q || '')), estrategia, razao, plano, ajustes, migracao })[v]();
     window.scrollTo(0, 0);
+    if (!SAUDOU && !offline) { SAUDOU = true; setTimeout(() => saudacaoDiaria(), 700); }
   } catch (e) { if (e.message !== 'Sessão expirada.') $app.innerHTML = `<div class="gate"><div class="card"><h2>Falha ao carregar</h2><p class="muted">${esc(e.message)}</p><div class="actions" style="justify-content:center"><button class="btn" id="retry">Tentar de novo</button></div></div></div>`; document.getElementById('retry')?.addEventListener('click', () => location.reload()); }
 }
 window.addEventListener('hashchange', () => { if (S || offline) route(); });
