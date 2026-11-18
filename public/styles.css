@@ -558,3 +558,10 @@ html.com-rosto body { overflow: hidden; }
 .rosto-cv3d { opacity: 0; transition: opacity .7s ease; }
 .rosto-cv3d.pronto { opacity: 1; }
 .rosto-cv.some:not(.rosto-cv3d) { opacity: 0; transition: opacity .7s ease; }
+.rosto-telemetria { position: absolute; inset: 0; display: flex; justify-content: space-between; padding: 70px 10px 120px; pointer-events: none; overflow: hidden;
+  font: 400 9.5px/1.55 var(--mono); color: rgba(120,220,255,.16); letter-spacing: .06em; mask-image: linear-gradient(transparent, #000 15%, #000 85%, transparent); -webkit-mask-image: linear-gradient(transparent, #000 15%, #000 85%, transparent); }
+.tl-col { animation: tl-sobe 60s linear infinite; white-space: nowrap; max-width: 48%; overflow: hidden; }
+.tl-dir { text-align: right; animation-duration: 75s; animation-direction: reverse; }
+@keyframes tl-sobe { from { transform: translateY(0); } to { transform: translateY(-50%); } }
+@media (max-width: 500px) { .rosto-telemetria { font-size: 8px; } }
+@media (prefers-reduced-motion: reduce) { .tl-col { animation: none; } }

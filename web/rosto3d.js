@@ -16,6 +16,45 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 const CIANO = new THREE.Color('#48e5ff'), CIANO_CLARO = new THREE.Color('#a8f4ff'), AMBAR = new THREE.Color('#ffb347'), OURO = new THREE.Color('#ffc46b');
 const cl = (x) => Math.max(0, Math.min(1, x));
 
+/** Divide cada triângulo em 4 (pontos médios das arestas), levando junto as expressões (morph targets). */
+function subdividir(geo) {
+  const idx = geo.index.array, pos = geo.attributes.position, morfs = geo.morphAttributes.position || [];
+  const n0 = pos.count, meio = new Map(), extra = [];
+  const chave = (a, b) => (a < b ? a * 1e6 + b : b * 1e6 + a);
+  const medio = (a, b) => { const k = chave(a, b); let m = meio.get(k); if (m == null) { m = n0 + extra.length; meio.set(k, m); extra.push([a, b]); } return m; };
+  const novoIdx = [];
+  for (let i = 0; i < idx.length; i += 3) {
+    const a = idx[i], b = idx[i + 1], c = idx[i + 2], ab = medio(a, b), bc = medio(b, c), ca = medio(c, a);
+    novoIdx.push(a, ab, ca, ab, b, bc, ca, bc, c, ab, bc, ca);
+  }
+  const total = n0 + extra.length;
+  const expandir = (attr) => {
+    const out = new Float32Array(total * 3);
+    for (let i = 0; i < n0; i++) { out[i * 3] = attr.getX(i); out[i * 3 + 1] = attr.getY(i); out[i * 3 + 2] = attr.getZ(i); }
+    extra.forEach(([a, b], j) => { const i = n0 + j; out[i * 3] = (attr.getX(a) + attr.getX(b)) / 2; out[i * 3 + 1] = (attr.getY(a) + attr.getY(b)) / 2; out[i * 3 + 2] = (attr.getZ(a) + attr.getZ(b)) / 2; });
+    return new THREE.BufferAttribute(out, 3);
+  };
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', expandir(pos));
+  g.morphAttributes.position = morfs.map(expandir);
+  g.morphTargetsRelative = geo.morphTargetsRelative;
+  g.setIndex(novoIdx);
+  return g;
+}
+
+/** Cor por vértice inversa à densidade local: regiões muito apertadas (pálpebras, lábios) não estouram em branco. */
+function corPorDensidade(geo, cor) {
+  const p = geo.attributes.position, n = p.count, v = new THREE.Vector3();
+  const caixa = new THREE.Box3().setFromBufferAttribute(p), tam = caixa.getSize(new THREE.Vector3()), cel = Math.max(tam.x, tam.y, tam.z) / 60;
+  const grade = new Map(), k = (x, y, z) => `${Math.floor(x / cel)},${Math.floor(y / cel)},${Math.floor(z / cel)}`;
+  for (let i = 0; i < n; i++) { v.fromBufferAttribute(p, i); const c = k(v.x, v.y, v.z); grade.set(c, (grade.get(c) || 0) + 1); }
+  const conta = []; for (let i = 0; i < n; i++) { v.fromBufferAttribute(p, i); conta.push(grade.get(k(v.x, v.y, v.z))); }
+  const ord = [...conta].sort((a, b) => a - b), mediana = ord[ord.length >> 1] || 1;
+  const cores = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) { const f = Math.min(1, Math.pow(mediana / conta[i], 0.9)); cores[i * 3] = cor.r * f; cores[i * 3 + 1] = cor.g * f; cores[i * 3 + 2] = cor.b * f; }
+  geo.setAttribute('color', new THREE.BufferAttribute(cores, 3));
+}
+
 function texturaPonto() {
   const c = document.createElement('canvas'); c.width = c.height = 64;
   const g = c.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
@@ -55,22 +94,24 @@ export async function criar(canvas, { forte = true, modelo = '/modelos/manuel.gl
   cabeca.material = new THREE.MeshBasicMaterial({ color: 0x020c14, transparent: true, opacity: 0.94, polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 2 });
   cabeca.renderOrder = 0;
   // 2. malha de fios
-  const OP_FIOS = forte ? 0.24 : 0.34, OP_NOS = forte ? 0.6 : 0.9;
+  const OP_FIOS = forte ? 0.2 : 0.34, OP_NOS = forte ? 0.55 : 0.9;
   const fios = new THREE.Mesh(cabeca.geometry, new THREE.MeshBasicMaterial({ color: CIANO, wireframe: true, transparent: true, opacity: OP_FIOS, blending: THREE.AdditiveBlending, depthWrite: false }));
   fios.morphTargetInfluences = cabeca.morphTargetInfluences; fios.morphTargetDictionary = cabeca.morphTargetDictionary; fios.renderOrder = 2;
   cabeca.parent.add(fios); fios.position.copy(cabeca.position); fios.quaternion.copy(cabeca.quaternion); fios.scale.copy(cabeca.scale);
   // 3. nós luminosos nos vértices
-  const nos = new THREE.Points(cabeca.geometry, new THREE.PointsMaterial({ color: CIANO_CLARO, size: forte ? 2.6 : 2.6, sizeAttenuation: false, map: ponto, transparent: true, opacity: OP_NOS, blending: THREE.AdditiveBlending, depthWrite: false }));
+  const geoNos = forte ? subdividir(cabeca.geometry) : cabeca.geometry;   // ~4× mais nós no aparelho forte
+  corPorDensidade(geoNos, CIANO_CLARO);
+  const nos = new THREE.Points(geoNos, new THREE.PointsMaterial({ vertexColors: true, size: forte ? 2 : 2.6, sizeAttenuation: false, map: ponto, transparent: true, opacity: OP_NOS, blending: THREE.AdditiveBlending, depthWrite: false }));
   nos.morphTargetInfluences = cabeca.morphTargetInfluences; nos.morphTargetDictionary = cabeca.morphTargetDictionary; nos.renderOrder = 3;
   cabeca.parent.add(nos); nos.position.copy(cabeca.position); nos.quaternion.copy(cabeca.quaternion); nos.scale.copy(cabeca.scale);
   // olhos âmbar: íris escura com brilho âmbar no centro real de cada olho
   const brilhosOlho = [];
   raiz.updateMatrixWorld(true); pivo.updateMatrixWorld(true);
   for (const o of olhos) {
-    o.traverse((m) => { if (m.isMesh) { m.material = new THREE.MeshBasicMaterial({ color: new THREE.Color('#3a1c02'), transparent: true, opacity: 0.95 }); m.renderOrder = 1; } });
+    o.traverse((m) => { if (m.isMesh) { m.material = new THREE.MeshBasicMaterial({ color: new THREE.Color('#c25a08'), transparent: true, opacity: 0.95 }); m.renderOrder = 1; } });
     const bx = new THREE.Box3().setFromObject(o), c = bx.getCenter(new THREE.Vector3()), r = bx.getSize(new THREE.Vector3()).x / 2;
     const frente = grupoCabeca.worldToLocal(new THREE.Vector3(c.x, c.y, bx.max.z));
-    for (const [tam, cor, op] of [[r * 3.4, AMBAR, 0.75], [r * 1.5, new THREE.Color('#ffd27a'), 1], [r * 0.45, new THREE.Color('#ffffff'), 1]]) {
+    for (const [tam, cor, op] of [[r * 3.2, new THREE.Color('#ff7a10'), 0.55], [r * 1.4, new THREE.Color('#ffa63d'), 0.75], [r * 0.4, new THREE.Color('#fff1c9'), 0.7]]) {
       const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: ponto, color: cor, transparent: true, opacity: op, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false }));
       sp.scale.setScalar(tam); sp.position.copy(frente); sp.position.z += r * 0.2; sp.renderOrder = 6; sp.userData.op = op; sp.userData.base = frente.clone();
       grupoCabeca.add(sp); brilhosOlho.push(sp);
@@ -112,7 +153,7 @@ export async function criar(canvas, { forte = true, modelo = '/modelos/manuel.gl
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.BufferAttribute(cores, 3));
     const pts = new THREE.Points(g, new THREE.PointsMaterial({ size: tam, sizeAttenuation: false, map: ponto, vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
     const grupo = new THREE.Group(); grupo.add(pts); grupo.rotation.set(inclX, 0, inclZ); cena.add(grupo);
-    aneis.push({ grupo, pts, cores, fase, cor, vel, n, brilho });
+    aneis.push({ grupo, pts, cores, fase, cor, vel, n, brilho, raio });
   };
   criarAnel(1.32, 1, OURO, forte ? 1300 : 700, 1.12, 0.38, 0.18, forte ? 2.8 : 2.4);
   criarAnel(1.22, 1, OURO, forte ? 900 : 500, 0.22, -0.16, -0.13, forte ? 2.6 : 2.2, 0.8);   // quase de lado: menos brilho por ponto
@@ -124,6 +165,39 @@ export async function criar(canvas, { forte = true, modelo = '/modelos/manuel.gl
   const gPo = new THREE.BufferGeometry(); gPo.setAttribute('position', new THREE.BufferAttribute(posPo, 3));
   const poeira = new THREE.Points(gPo, new THREE.PointsMaterial({ color: CIANO_CLARO, size: forte ? 2.4 : 2.2, sizeAttenuation: false, map: ponto, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false }));
   cena.add(poeira);
+
+  // ── efeitos de energia (mais intensos no aparelho forte) ──
+  const pool = (n, tam, cor, op = 1) => {
+    const pos = new Float32Array(n * 3), cores = new Float32Array(n * 3);
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.BufferAttribute(cores, 3));
+    const pts = new THREE.Points(g, new THREE.PointsMaterial({ size: tam, sizeAttenuation: false, map: ponto, vertexColors: true, transparent: true, opacity: op, blending: THREE.AdditiveBlending, depthWrite: false }));
+    pts.frustumCulled = false; return { pts, pos, cores, g, n, vida: new Float32Array(n), dur: new Float32Array(n), vel: new Float32Array(n * 3), cor };
+  };
+  // brasas subindo dos olhos
+  const brasas = pool(forte ? 60 : 30, forte ? 2.4 : 2.2, AMBAR);
+  const olhosPos = brilhosOlho.filter((_, i) => i % 3 === 0).map(b => b.userData.base);
+  grupoCabeca.add(brasas.pts);
+  // faíscas soltando do rosto (desintegração), mais pela lateral e por cima
+  const faiscas = pool(forte ? 700 : 260, forte ? 2.2 : 2, CIANO_CLARO);
+  grupoCabeca.add(faiscas.pts);
+  const verts = cabeca.geometry.attributes.position, mw = new THREE.Matrix4();
+  cabeca.updateMatrixWorld(true); mw.copy(grupoCabeca.matrixWorld).invert().multiply(cabeca.matrixWorld);
+  const amostra = []; const v3 = new THREE.Vector3();
+  for (let i = 0; i < verts.count; i += 2) { v3.fromBufferAttribute(verts, i).applyMatrix4(mw); if (v3.z > -0.4 && (Math.abs(v3.x) > 0.45 || v3.y > 0.55)) amostra.push(v3.clone()); }
+  // rastros rápidos de luz (linhas curtas)
+  const nTr = forte ? 40 : 0, trPos = new Float32Array(nTr * 6), trCor = new Float32Array(nTr * 6), trVel = new Float32Array(nTr * 3), trVida = new Float32Array(nTr), trDur = new Float32Array(nTr);
+  const gTr = new THREE.BufferGeometry(); gTr.setAttribute('position', new THREE.BufferAttribute(trPos, 3)); gTr.setAttribute('color', new THREE.BufferAttribute(trCor, 3));
+  const rastros = new THREE.LineSegments(gTr, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+  rastros.frustumCulled = false; if (nTr) grupoCabeca.add(rastros);
+  // cometas dourados percorrendo os anéis, com cauda
+  const cometas = [];
+  for (const a of aneis) if (a.cor !== CIANO) for (let c = 0; c < (forte ? 3 : 1); c++) {
+    const n = forte ? 28 : 14, pc = pool(n, forte ? 3.6 : 3, OURO);
+    a.grupo.add(pc.pts); cometas.push({ a, pc, ang: Math.random() * Math.PI * 2, vel: (0.5 + Math.random() * 0.5) * Math.sign(a.vel || 1), raio: a.raio });
+  }
+  // brilho volumétrico atrás da cabeça
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: ponto, color: new THREE.Color('#0d4f66'), transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false }));
+  halo.scale.set(4.2, 4.6, 1); halo.position.set(0, -0.1, -1.2); halo.renderOrder = -1; cena.add(halo);
 
   if (debug) {   // diagnóstico: esconde partes da cena
     const esc_ = { aneis: () => aneis.forEach(a => (a.grupo.visible = false)), busto: () => (busto.visible = false), poeira: () => (poeira.visible = false),
@@ -205,6 +279,52 @@ export async function criar(canvas, { forte = true, modelo = '/modelos/manuel.gl
         }
         a.pts.geometry.attributes.color.needsUpdate = true;
       }
+      // ── brasas dos olhos ──
+      const vivo = (pl, i, nascer) => { pl.vida[i] -= dt; if (pl.vida[i] <= 0) nascer(i); return 1 - pl.vida[i] / pl.dur[i]; };
+      if (olhosPos.length) for (let i = 0; i < brasas.n; i++) {
+        const t = vivo(brasas, i, (j) => { const o = olhosPos[j % olhosPos.length]; brasas.pos[j * 3] = o.x + (Math.random() - 0.5) * 0.06; brasas.pos[j * 3 + 1] = o.y + (Math.random() - 0.5) * 0.03; brasas.pos[j * 3 + 2] = o.z + 0.02;
+          brasas.vel[j * 3] = (Math.random() - 0.5) * 0.12; brasas.vel[j * 3 + 1] = 0.08 + Math.random() * 0.2; brasas.vel[j * 3 + 2] = Math.random() * 0.05; brasas.dur[j] = brasas.vida[j] = 0.6 + Math.random() * 1.1; });
+        brasas.pos[i * 3] += brasas.vel[i * 3] * dt; brasas.pos[i * 3 + 1] += brasas.vel[i * 3 + 1] * dt; brasas.pos[i * 3 + 2] += brasas.vel[i * 3 + 2] * dt;
+        const v = Math.sin(Math.PI * Math.min(1, t)) * fade * Math.min(P.olhoL, P.olhoR) * (falando ? 1 + som : 1);
+        brasas.cores[i * 3] = AMBAR.r * v; brasas.cores[i * 3 + 1] = AMBAR.g * v * (1 - t * 0.5); brasas.cores[i * 3 + 2] = AMBAR.b * v * (1 - t);
+      }
+      brasas.g.attributes.position.needsUpdate = brasas.g.attributes.color.needsUpdate = true;
+      // ── faíscas se soltando do rosto ──
+      if (amostra.length) for (let i = 0; i < faiscas.n; i++) {
+        const t = vivo(faiscas, i, (j) => { const o = amostra[(Math.random() * amostra.length) | 0]; faiscas.pos[j * 3] = o.x; faiscas.pos[j * 3 + 1] = o.y; faiscas.pos[j * 3 + 2] = o.z;
+          const sx = Math.sign(o.x) || 1; faiscas.vel[j * 3] = sx * (0.06 + Math.random() * 0.25); faiscas.vel[j * 3 + 1] = (Math.random() - 0.3) * 0.18; faiscas.vel[j * 3 + 2] = (Math.random() - 0.5) * 0.12;
+          faiscas.dur[j] = faiscas.vida[j] = 1.4 + Math.random() * 2.6; });
+        faiscas.pos[i * 3] += faiscas.vel[i * 3] * dt; faiscas.pos[i * 3 + 1] += faiscas.vel[i * 3 + 1] * dt; faiscas.pos[i * 3 + 2] += faiscas.vel[i * 3 + 2] * dt;
+        const v = Math.pow(1 - Math.min(1, t), 1.6) * 0.85 * fade * (falando ? 1 + som * 0.8 : 1), ouro = Math.random() < 0.004 ? 1 : 0;
+        const c = ouro ? OURO : CIANO_CLARO; faiscas.cores[i * 3] = c.r * v; faiscas.cores[i * 3 + 1] = c.g * v; faiscas.cores[i * 3 + 2] = c.b * v;
+      }
+      faiscas.g.attributes.position.needsUpdate = faiscas.g.attributes.color.needsUpdate = true;
+      // ── rastros rápidos de luz ──
+      for (let i = 0; i < nTr; i++) {
+        trVida[i] -= dt;
+        if (trVida[i] <= 0) { const o = amostra[(Math.random() * amostra.length) | 0] || v3; const sx = Math.sign(o.x) || 1;
+          trPos[i * 6] = o.x; trPos[i * 6 + 1] = o.y; trPos[i * 6 + 2] = o.z; trVel[i * 3] = sx * (0.8 + Math.random() * 1.6); trVel[i * 3 + 1] = (Math.random() - 0.4) * 0.6; trVel[i * 3 + 2] = (Math.random() - 0.5) * 0.3;
+          trDur[i] = trVida[i] = 0.35 + Math.random() * 0.9; }
+        const k2 = trVida[i] / trDur[i];
+        trPos[i * 6] += trVel[i * 3] * dt; trPos[i * 6 + 1] += trVel[i * 3 + 1] * dt; trPos[i * 6 + 2] += trVel[i * 3 + 2] * dt;
+        trPos[i * 6 + 3] = trPos[i * 6] - trVel[i * 3] * 0.09; trPos[i * 6 + 4] = trPos[i * 6 + 1] - trVel[i * 3 + 1] * 0.09; trPos[i * 6 + 5] = trPos[i * 6 + 2] - trVel[i * 3 + 2] * 0.09;
+        const v = k2 * 0.9 * fade, c = i % 5 === 0 ? OURO : CIANO_CLARO;
+        trCor[i * 6] = c.r * v; trCor[i * 6 + 1] = c.g * v; trCor[i * 6 + 2] = c.b * v; trCor[i * 6 + 3] = 0; trCor[i * 6 + 4] = 0; trCor[i * 6 + 5] = 0;
+      }
+      if (nTr) gTr.attributes.position.needsUpdate = gTr.attributes.color.needsUpdate = true;
+      // ── cometas dourados nos anéis ──
+      for (const cm of cometas) {
+        cm.ang += cm.vel * dt * (falando ? 1.5 : 1);
+        const { pc } = cm;
+        for (let i = 0; i < pc.n; i++) {
+          const a2 = cm.ang - i * 0.022 * Math.sign(cm.vel), r = cm.raio * (1 + Math.sin(i * 1.7 + T * 6) * 0.004);
+          pc.pos[i * 3] = Math.cos(a2) * r; pc.pos[i * 3 + 1] = (Math.random() - 0.5) * 0.01 * i / pc.n; pc.pos[i * 3 + 2] = Math.sin(a2) * r;
+          const v = Math.pow(1 - i / pc.n, 2.2) * 1.6 * fade * (i === 0 ? 1.6 : 1);
+          pc.cores[i * 3] = OURO.r * v; pc.cores[i * 3 + 1] = OURO.g * v; pc.cores[i * 3 + 2] = OURO.b * v * 0.8;
+        }
+        pc.g.attributes.position.needsUpdate = pc.g.attributes.color.needsUpdate = true;
+      }
+      halo.material.opacity = (0.45 + (falando ? som * 0.35 : 0) + (ouvindo ? 0.1 : 0)) * fade;
       // ── poeira subindo devagar ──
       const pp = gPo.attributes.position.array;
       for (let i = 0; i < nPo; i++) { pp[i * 3 + 1] += velPo[i] * dt; if (pp[i * 3 + 1] > 2.3) pp[i * 3 + 1] = -2.3; pp[i * 3] += Math.sin(T * 0.3 + i) * 0.0008; }

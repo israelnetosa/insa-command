@@ -904,7 +904,10 @@ function estadoHumor() {
 }
 function abrirRostoManuel() {
   ESCUTA?.pausar();
-  return abrirRosto({ estado: estadoHumor(), aoFechar: () => { pararFala(); VOZ.ouvindo?.parar(); VOZ.ouvindo = null; clearTimeout(VOZ.ocioso); setTimeout(retomarEscuta, 600); }, aoMicrofone: podeOuvir() ? (b) => ligarMic(b) : null });
+  const t = S?.totais || {}, agora = new Date().toLocaleTimeString('pt-BR');
+  const telemetria = [`T ${agora} :: SYS.MANUEL ONLINE`, `PATRIMONIO ${brl(t.patrimonio)}`, `CAIXA ${brl(t.caixa)} :: RENDA/MES ${brl(t.renda_mes_estimada)}`, `RESULTADO.DIA ${brl(t.resultado_dia)}`,
+    ...(S?.posicoes || []).map(p => `${p.ticker} ${nf(p.preco)} ${p.var_dia >= 0 ? '+' : ''}${nf(p.var_dia ?? 0)}% :: ${String(p.zona || '').toUpperCase()} :: Q${p.qtd}`)];
+  return abrirRosto({ estado: estadoHumor(), telemetria, aoFechar: () => { pararFala(); VOZ.ouvindo?.parar(); VOZ.ouvindo = null; clearTimeout(VOZ.ocioso); setTimeout(retomarEscuta, 600); }, aoMicrofone: podeOuvir() ? (b) => ligarMic(b) : null });
 }
 const ehLongo = (t) => String(t || '').length > 420;
 async function processarFala(falado) {

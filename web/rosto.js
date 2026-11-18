@@ -151,7 +151,7 @@ const pref3d = () => { try { return localStorage.getItem('insa.pref.rosto3d') !=
  * Abre o rosto em tela cheia. Devolve um controle:
  *  falar(texto, { audio, fala })  · posicao(charIndex) · ouvindo(bool, parcial) · legenda(t) · humor(estado) · fechar()
  */
-export function abrirRosto({ estado = {}, aoFechar, aoMicrofone } = {}) {
+export function abrirRosto({ estado = {}, aoFechar, aoMicrofone, telemetria = [] } = {}) {
   if (ATUAL) { ATUAL.humor(estado); return ATUAL; }
   const quieto = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const nivel = nivelAparelho();
@@ -159,7 +159,9 @@ export function abrirRosto({ estado = {}, aoFechar, aoMicrofone } = {}) {
 
   const el = document.createElement('div');
   el.className = 'rosto'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', 'M.A.N.U.E.L.');
-  el.innerHTML = `<canvas class="rosto-cv rosto-cv3d" hidden></canvas><canvas class="rosto-cv"></canvas>
+  const linhas = (telemetria.length ? telemetria : ['SYS.MANUEL :: ONLINE', 'NUCLEO :: MALHA REATIVA', 'FEED B3 :: AGUARDANDO']).map(t => String(t).replace(/[<>&]/g, ''));
+  const coluna = (k) => Array.from({ length: 3 }, () => linhas).flat().map((t, i) => `<div>${String((i * 7919 + k) % 9973).padStart(4, '0')} ${t}</div>`).join('');
+  el.innerHTML = `<div class="rosto-telemetria" aria-hidden="true"><div class="tl-col">${coluna(1)}</div><div class="tl-col tl-dir">${coluna(5)}</div></div><canvas class="rosto-cv rosto-cv3d" hidden></canvas><canvas class="rosto-cv"></canvas>
     <div class="rosto-topo"><span class="rosto-nome">M.A.N.U.E.L.</span><span class="rosto-estado" id="rosto-estado">em linha</span>
       <button type="button" class="rosto-x" aria-label="Fechar">✕</button></div>
     <div class="rosto-baixo"><p class="rosto-legenda" id="rosto-leg" aria-live="polite"></p>
