@@ -359,6 +359,8 @@ export async function criar(canvas, { forte = true, modelo = '/modelos/manuel.gl
     /** P: pose de rosto.js; info: { T, dt, k (entrada 0–1), som, falando, ouvindo } */
     quadro(P, info) {
       const { T, dt, k, som = 0, falando = false, ouvindo = false, pensando = false, pulso = 0, clima = 0 } = info;
+      // no console a tela é menor e o brilho somado estoura: anéis e malha mais contidos; a tela cheia fica como está
+      const luzAneis = modoEnq === 'busto' ? 0.45 : 1;
       if (alvoCam && camAtual) { const kc = Math.min(1, dt * 5); for (const c of ['fov', 'y', 'z', 'ly']) camAtual[c] += (alvoCam[c] - camAtual[c]) * kc; aplicarCam(); }
       // ── expressões ──
       const ab = P.aberto, red = P.redondo;
@@ -391,7 +393,7 @@ export async function criar(canvas, { forte = true, modelo = '/modelos/manuel.gl
       grupoCabeca.position.y = Math.sin(T * 0.8) * 0.012;
       busto.rotation.y = grupoCabeca.rotation.y * 0.15;
       const fade = k * k * (3 - 2 * k);
-      const dens = modoEnq === 'rosto' ? 0.4 : 1;   // compacto: menos pixels, menos brilho somado
+      const dens = modoEnq === 'rosto' ? 0.4 : modoEnq === 'busto' ? 0.62 : 1;   // compacto: menos pixels, menos brilho somado
       fios.material.opacity = OP_FIOS * dens * fade * (1 + (falando ? som * 0.5 : 0)); nos.material.opacity = OP_NOS * dens * fade;
       for (const a of aneis) a.grupo.visible = modoEnq !== 'rosto';
       cabeca.material.opacity = 0.94 * fade; busto.material.opacity = 0.75 * fade;
@@ -404,7 +406,7 @@ export async function criar(canvas, { forte = true, modelo = '/modelos/manuel.gl
         const base = (a.cor === CIANO ? 0.16 : 0.95) * (forte ? 1 : 1.6) * (1 + pulso * 1.6 + (pensando ? 0.35 : 0)), extra = falando ? som * 0.8 : 0;
         for (let i = 0; i < a.n; i++) {
           const f = a.fase[i], fa = Math.sin(T * 2.4 + f * 3) * 0.5 + 0.5, faisca = Math.pow(Math.sin(T * 1.3 + f * 7) * 0.5 + 0.5, 18) * 1.6;
-          const v = (base * (0.55 + fa * 0.45) + faisca + extra * fa) * fade * a.brilho;
+          const v = (base * (0.55 + fa * 0.45) + faisca + extra * fa) * fade * a.brilho * luzAneis;
           const c = tom && a.cor !== CIANO ? tom : a.cor;
           a.cores[i * 3] = c.r * v; a.cores[i * 3 + 1] = c.g * v; a.cores[i * 3 + 2] = c.b * v;
         }
@@ -456,9 +458,9 @@ export async function criar(canvas, { forte = true, modelo = '/modelos/manuel.gl
         }
         pc.g.attributes.position.needsUpdate = pc.g.attributes.color.needsUpdate = true;
       }
-      for (const a of aneis) { const l = a.grupo.userData.linha; if (l) l.material.opacity = (a.cor === CIANO ? 0.3 : 0.9) * fade * (falando ? 1 + som * 0.4 : 1); }
+      for (const a of aneis) { const l = a.grupo.userData.linha; if (l) l.material.opacity = (a.cor === CIANO ? 0.3 : 0.9) * luzAneis * fade * (falando ? 1 + som * 0.4 : 1); }
       for (const b of bokeh) { b.position.x += b.userData.vx * dt; b.position.y += b.userData.vy * dt; if (Math.abs(b.position.x) > 2.6) b.userData.vx *= -1; if (Math.abs(b.position.y) > 2.2) b.userData.vy *= -1; b.material.opacity = b.userData.op * fade; }
-      halo.material.opacity = (modoEnq === 'rosto' ? 0.25 : 1) * (0.45 + (falando ? som * 0.35 : 0) + (ouvindo ? 0.1 : 0) + (pensando ? 0.15 + Math.sin(T * 6) * 0.12 : 0) + pulso * 0.5) * fade;
+      halo.material.opacity = (modoEnq === 'rosto' ? 0.25 : modoEnq === 'busto' ? 0.45 : 1) * (0.45 + (falando ? som * 0.35 : 0) + (ouvindo ? 0.1 : 0) + (pensando ? 0.15 + Math.sin(T * 6) * 0.12 : 0) + pulso * 0.5) * fade;
       // clima da carteira tinge o brilho de fundo: dia ruim puxa para âmbar, dia bom para verde-água
       const cn = Math.max(0, -clima), cp = Math.max(0, clima);
       halo.material.color.setRGB(0.05 + cn * 0.32 + pulso * 0.5, 0.31 - cn * 0.12 + cp * 0.08 + pulso * 0.15, 0.4 - cn * 0.3 - cp * 0.12 - pulso * 0.3);
@@ -467,7 +469,7 @@ export async function criar(canvas, { forte = true, modelo = '/modelos/manuel.gl
       for (let i = 0; i < nPo; i++) { pp[i * 3 + 1] += velPo[i] * dt; if (pp[i * 3 + 1] > 2.3) pp[i * 3 + 1] = -2.3; pp[i * 3] += Math.sin(T * 0.3 + i) * 0.0008; }
       gPo.attributes.position.needsUpdate = true;
       poeira.material.opacity = 0.6 * fade;
-      if (bloom) bloom.strength = (modoEnq === 'rosto' ? 0.4 : 1) * (0.42 + (falando ? som * 0.25 : 0));
+      if (bloom) bloom.strength = (modoEnq === 'rosto' ? 0.4 : modoEnq === 'busto' ? 0.45 : 1) * (0.42 + (falando ? som * 0.25 : 0));
       if (composer) composer.render(); else renderer.render(cena, camera);
     },
     liberar() {
