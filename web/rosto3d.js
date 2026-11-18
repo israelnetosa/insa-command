@@ -61,13 +61,14 @@ function corPorDensidade(geo, cor) {
  */
 function matHolo({ pontos = false, cor, borda, opacidade, tamanho = 2, mapa = null, cores = false }) {
   const m = new THREE.ShaderMaterial({
-    uniforms: { uCor: { value: cor.clone() }, uBorda: { value: borda.clone() }, uOpac: { value: opacidade }, uTam: { value: tamanho }, uMapa: { value: mapa }, uPonto: { value: pontos } },
+    uniforms: { uCor: { value: cor.clone() }, uBorda: { value: borda.clone() }, uOpac: { value: opacidade }, uTam: { value: tamanho }, uMapa: { value: mapa }, uPonto: { value: pontos }, uT: { value: 0 } },
     vertexColors: cores, wireframe: !pontos, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
     vertexShader: `
       #include <common>
       #include <morphtarget_pars_vertex>
-      uniform float uTam;
-      varying float vLuz; varying float vBorda; varying vec3 vCor;
+      uniform float uTam; uniform float uT;
+      attribute float aRand;
+      varying float vLuz; varying float vBorda; varying vec3 vCor; varying float vBrilho;
       void main() {
         #include <beginnormal_vertex>
         #include <morphnormal_vertex>
@@ -83,16 +84,19 @@ function matHolo({ pontos = false, cor, borda, opacidade, tamanho = 2, mapa = nu
           vCor = color;
         #endif
         gl_Position = projectionMatrix * mv;
-        gl_PointSize = uTam;
+        float pisca = 0.55 + 0.45 * sin(uT * (1.5 + aRand * 4.0) + aRand * 40.0);
+        vBrilho = mix(0.35, 1.6, aRand * aRand) * pisca;
+        gl_PointSize = uTam * mix(0.55, 2.1, pow(aRand, 3.0));
       }`,
     fragmentShader: `
       uniform vec3 uCor; uniform vec3 uBorda; uniform float uOpac; uniform sampler2D uMapa; uniform bool uPonto;
-      varying float vLuz; varying float vBorda; varying vec3 vCor;
+      varying float vLuz; varying float vBorda; varying vec3 vCor; varying float vBrilho;
       void main() {
         float a = 1.0;
         if (uPonto) { a = texture2D(uMapa, gl_PointCoord).a; if (a < 0.02) discard; }
         vec3 c = uCor * vCor * vLuz + uBorda * vBorda * 1.15;
-        gl_FragColor = vec4(c, a * uOpac * (0.25 + 0.75 * vLuz + vBorda));
+        float b = uPonto ? vBrilho : 1.0;
+        gl_FragColor = vec4(c * b, a * uOpac * (0.25 + 0.75 * vLuz + vBorda));
       }`,
   });
   Object.defineProperty(m, 'opacity', { get: () => m.uniforms.uOpac.value, set: (v) => { if (m.uniforms) m.uniforms.uOpac.value = v; }, configurable: true });
@@ -151,15 +155,17 @@ export async function criar(canvas, { forte = true, modelo = '/modelos/manuel.gl
   cabeca.material = new THREE.MeshBasicMaterial({ color: 0x020c14, transparent: true, opacity: 0.94, polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 2 });
   cabeca.renderOrder = 0;
   // 2. malha de fios
-  const OP_FIOS = forte ? 0.32 : 0.4, OP_NOS = forte ? 0.6 : 0.9;
+  const OP_FIOS = forte ? 0.26 : 0.34, OP_NOS = forte ? 0.7 : 0.95;
   if (!cabeca.geometry.attributes.normal) cabeca.geometry.computeVertexNormals();
-  const AZUL_BORDA = new THREE.Color('#1f6bff');
+  const comRand = (g) => { const r = new Float32Array(g.attributes.position.count); for (let i = 0; i < r.length; i++) r[i] = Math.random(); g.setAttribute('aRand', new THREE.BufferAttribute(r, 1)); };
+  comRand(cabeca.geometry);
+  const AZUL_BORDA = new THREE.Color('#2a9fe8');
   const fios = new THREE.Mesh(cabeca.geometry, matHolo({ cor: CIANO, borda: AZUL_BORDA, opacidade: OP_FIOS }));
   fios.morphTargetInfluences = cabeca.morphTargetInfluences; fios.morphTargetDictionary = cabeca.morphTargetDictionary; fios.renderOrder = 2;
   cabeca.parent.add(fios); fios.position.copy(cabeca.position); fios.quaternion.copy(cabeca.quaternion); fios.scale.copy(cabeca.scale);
   // 3. nós luminosos nos vértices
   const geoNos = forte ? subdividir(cabeca.geometry) : cabeca.geometry;   // ~4× mais nós no aparelho forte
-  corPorDensidade(geoNos, CIANO_CLARO); if (!geoNos.attributes.normal) geoNos.computeVertexNormals();
+  corPorDensidade(geoNos, CIANO_CLARO); if (!geoNos.attributes.normal) geoNos.computeVertexNormals(); if (geoNos !== cabeca.geometry) comRand(geoNos);
   const nos = new THREE.Points(geoNos, matHolo({ pontos: true, cores: true, cor: new THREE.Color(1, 1, 1), borda: AZUL_BORDA, opacidade: OP_NOS, mapa: ponto, tamanho: (forte ? 2 : 2.6) }));
   nos.morphTargetInfluences = cabeca.morphTargetInfluences; nos.morphTargetDictionary = cabeca.morphTargetDictionary; nos.renderOrder = 3;
   cabeca.parent.add(nos); nos.position.copy(cabeca.position); nos.quaternion.copy(cabeca.quaternion); nos.scale.copy(cabeca.scale);
@@ -176,48 +182,57 @@ export async function criar(canvas, { forte = true, modelo = '/modelos/manuel.gl
       sp.scale.setScalar(tam); sp.position.copy(frente); sp.position.z += r * 0.2; sp.renderOrder = 6; sp.userData.op = op; sp.userData.base = frente.clone();
       grupoCabeca.add(sp); brilhosOlho.push(sp);
     }
+    const rastro = new THREE.Sprite(new THREE.SpriteMaterial({ map: ponto, color: new THREE.Color('#ff8c1a'), transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false }));
+    rastro.scale.set(r * 9, r * 1.1, 1); rastro.position.copy(frente); rastro.renderOrder = 5; rastro.userData.op = 0.55; rastro.userData.base = frente.clone(); grupoCabeca.add(rastro); brilhosOlho.push(rastro);
   }
   // busto (pescoço e ombros) em malha de plexo: superfície em grade com nós, fios e diagonais; some para baixo
   const busto = (() => {
-    const NU = forte ? 64 : 40, NV = forte ? 30 : 20, pts = [], cores = [], fios = [];
-    // superfície: v = 0 sob o queixo → 1 no peito; u = volta ao redor (só a frente e os lados)
+    const N = forte ? 2600 : 1300, pts = [], cores = [], fios = [];
     const sup = (u, v) => {
-      const a = (u - 0.5) * Math.PI * 1.2;                         // frente e lados
-      const k = Math.max(0, (v - 0.3) / 0.7);                      // 0 no pescoço → 1 no peito
-      const larg = 0.29 + v * 0.1 + Math.pow(k, 0.75) * 1.4;      // pescoço fino, ombros largos
-      const prof = 0.24 + k * 0.3;
+      const a = (u - 0.5) * Math.PI * 1.2, k = Math.max(0, (v - 0.3) / 0.7);
+      const larg = 0.36 + v * 0.1 + Math.pow(k, 0.75) * 1.4, prof = 0.28 + k * 0.3;
       const y = -0.62 - v * 1.4 - k * Math.pow(Math.abs(Math.sin(a)), 1.4) * 0.45;
       return [Math.sin(a) * larg, y, Math.cos(a) * prof - 0.22];
     };
-    const idx = (i2, j2) => j2 * (NU + 1) + i2;
-    for (let j2 = 0; j2 <= NV; j2++) for (let i2 = 0; i2 <= NU; i2++) {
-      const jit = () => (Math.random() - 0.5) * 0.012;
-      const [x, y, z] = sup(i2 / NU, j2 / NV); pts.push(x + jit(), y + jit(), z + jit());
-      const vv = j2 / NV, f = 0.4 * Math.min(1, vv / 0.15 + 0.2) * Math.pow(1 - vv, 1.5) * (1 - Math.pow(Math.abs(i2 / NU - 0.5) * 2, 3) * 0.7);
+    for (let i2 = 0; i2 < N; i2++) {
+      // mais pontos no pescoço e na linha dos ombros
+      const v = Math.random() < 0.35 ? Math.random() * 0.4 : 0.3 + Math.pow(Math.random(), 1.4) * 0.7, u = Math.random();
+      const [x, y, z] = sup(u, v); pts.push(x, y, z);
+      const f = 0.75 * Math.min(1, v / 0.12 + 0.25) * Math.pow(1 - v, 1.4) * (1 - Math.pow(Math.abs(u - 0.5) * 2, 3) * 0.7) * (0.5 + Math.random() * 0.8);
       cores.push(CIANO.r * f, CIANO.g * f, CIANO.b * f);
     }
-    for (let j2 = 0; j2 <= NV; j2++) for (let i2 = 0; i2 <= NU; i2++) {
-      if (i2 < NU) fios.push(idx(i2, j2), idx(i2 + 1, j2));
-      if (j2 < NV) fios.push(idx(i2, j2), idx(i2, j2 + 1));
-      if (i2 < NU && j2 < NV) fios.push((i2 + j2) % 2 ? idx(i2, j2) : idx(i2 + 1, j2), (i2 + j2) % 2 ? idx(i2 + 1, j2 + 1) : idx(i2, j2 + 1));
+    // liga cada ponto aos 2 vizinhos mais próximos (grade espacial)
+    const cel = 0.16, grade = new Map(), ck = (x, y, z) => `${Math.floor(x / cel)},${Math.floor(y / cel)},${Math.floor(z / cel)}`;
+    for (let i2 = 0; i2 < N; i2++) { const k2 = ck(pts[i2 * 3], pts[i2 * 3 + 1], pts[i2 * 3 + 2]); (grade.get(k2) || grade.set(k2, []).get(k2)).push(i2); }
+    for (let i2 = 0; i2 < N; i2++) {
+      const x = pts[i2 * 3], y = pts[i2 * 3 + 1], z = pts[i2 * 3 + 2], viz = [];
+      for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {
+        for (const o of grade.get(`${Math.floor(x / cel) + dx},${Math.floor(y / cel) + dy},${Math.floor(z / cel) + dz}`) || []) {
+          if (o <= i2) continue; const d = (pts[o * 3] - x) ** 2 + (pts[o * 3 + 1] - y) ** 2 + (pts[o * 3 + 2] - z) ** 2; if (d < cel * cel) viz.push([d, o]);
+        }
+      }
+      viz.sort((a, b) => a[0] - b[0]).slice(0, 2).forEach(([, o]) => fios.push(i2, o));
     }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(cores, 3)); g.setIndex(fios);
+    const rr = new Float32Array(N); for (let i2 = 0; i2 < N; i2++) rr[i2] = Math.random();
     const grupo = new THREE.Group();
-    const linhas = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.32, blending: THREE.AdditiveBlending, depthWrite: false }));
-    const nosB = new THREE.Points(g, new THREE.PointsMaterial({ vertexColors: true, size: forte ? 2.4 : 2.2, sizeAttenuation: false, map: ponto, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false }));
-    grupo.add(linhas, nosB); grupo.material = { set opacity(v) { linhas.material.opacity = 0.32 * v / 0.75; nosB.material.opacity = 0.85 * v / 0.75; } };
+    const linhas = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false }));
+    const gP = new THREE.BufferGeometry(); gP.setAttribute('position', g.attributes.position); gP.setAttribute('color', g.attributes.color);
+    const nosB = new THREE.Points(gP, new THREE.PointsMaterial({ vertexColors: true, size: forte ? 2.6 : 2.4, sizeAttenuation: false, map: ponto, transparent: true, opacity: 1, blending: THREE.AdditiveBlending, depthWrite: false }));
+    grupo.add(linhas, nosB); grupo.material = { set opacity(v) { linhas.material.opacity = 0.5 * v / 0.75; nosB.material.opacity = v / 0.75; } };
     return grupo;
   })();
   cena.add(busto);
 
   // anéis: dois dourados e um ciano, feitos de pontos com faíscas
   const aneis = [];
-  const criarAnel = (raio, ry, cor, n, inclX, inclZ, vel, tam, brilho = 1) => {
+  const criarAnel = (raio, ry, cor, n, inclX, inclZ, vel, tam, brilho = 1, largura = 0.012) => {
     const pos = new Float32Array(n * 3), cores = new Float32Array(n * 3), fase = new Float32Array(n);
     for (let i = 0; i < n; i++) {
       const a = (i / n) * Math.PI * 2, j = 1 + (Math.random() - 0.5) * 0.025;
-      pos[i * 3] = Math.cos(a) * raio * j; pos[i * 3 + 1] = (Math.random() - 0.5) * 0.012; pos[i * 3 + 2] = Math.sin(a) * raio * ry * j;
+      const espalha = (Math.random() - 0.5) * largura * (Math.random() < 0.15 ? 4 : 1);   // faixa com faíscas escapando
+      pos[i * 3] = Math.cos(a) * (raio + espalha) * j; pos[i * 3 + 1] = (Math.random() - 0.5) * largura * 0.6; pos[i * 3 + 2] = Math.sin(a) * (raio + espalha) * ry * j;
       fase[i] = Math.random() * Math.PI * 2;
     }
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.BufferAttribute(cores, 3));
@@ -228,9 +243,10 @@ export async function criar(canvas, { forte = true, modelo = '/modelos/manuel.gl
     grupo.add(linha); grupo.userData.linha = linha;
     aneis.push({ grupo, pts, cores, fase, cor, vel, n, brilho, raio });
   };
-  criarAnel(1.32, 1, OURO, forte ? 1300 : 700, 1.12, 0.38, 0.18, forte ? 2.8 : 2.4);
-  criarAnel(1.25, 1, OURO, forte ? 900 : 500, 0.3, -0.22, -0.13, forte ? 2.6 : 2.2, 0.8);   // quase de lado: menos brilho por ponto
-  criarAnel(1.6, 1, CIANO, forte ? 320 : 220, 1.05, -0.2, 0.08, forte ? 1.8 : 1.6);
+  criarAnel(0.98, 1, OURO, forte ? 2200 : 1100, 1.22, 0.55, 0.22, forte ? 3.4 : 3, 1.5, 0.05);     // elipse em pé, cruza a testa e o queixo pela frente
+  criarAnel(1.08, 1, OURO, forte ? 2000 : 1000, 0.36, -0.36, -0.16, forte ? 3.4 : 3, 1.3, 0.05);  // faixa inclinada na altura dos olhos
+  criarAnel(2.05, 1, OURO, forte ? 1600 : 800, 1.5, 0.05, 0.05, forte ? 2.4 : 2.2, 0.9, 0.02);    // círculo grande atrás
+  criarAnel(1.5, 1, CIANO, forte ? 420 : 260, 0.9, -0.28, 0.08, forte ? 1.8 : 1.6, 0.9);
 
   // poeira de dados flutuando
   const nPo = forte ? 900 : 400, posPo = new Float32Array(nPo * 3), velPo = new Float32Array(nPo);
@@ -248,7 +264,7 @@ export async function criar(canvas, { forte = true, modelo = '/modelos/manuel.gl
   };
   // brasas subindo dos olhos
   const brasas = pool(forte ? 60 : 30, forte ? 2.4 : 2.2, AMBAR);
-  const olhosPos = brilhosOlho.filter((_, i) => i % 2 === 0).map(b => b.userData.base);
+  const olhosPos = brilhosOlho.filter((_, i) => i % 3 === 0).map(b => b.userData.base);
   grupoCabeca.add(brasas.pts);
   // faíscas soltando do rosto (desintegração), mais pela lateral e por cima
   const faiscas = pool(forte ? 700 : 260, forte ? 2.2 : 2, CIANO_CLARO);
@@ -305,7 +321,7 @@ export async function criar(canvas, { forte = true, modelo = '/modelos/manuel.gl
       camera.aspect = w / h;
       // enquadramento: cabeça no terço de cima, ombros entrando por baixo; no celular em pé, um pouco mais perto
       const retrato = h > w;
-      camera.fov = retrato ? 34 : 26; camera.position.set(0, retrato ? -0.3 : -0.3, retrato ? 6.9 : 6.2); camera.lookAt(0, retrato ? -0.48 : -0.42, 0);
+      camera.fov = retrato ? 34 : 26; camera.position.set(0, retrato ? -0.25 : -0.3, retrato ? 6.3 : 6.0); camera.lookAt(0, retrato ? -0.45 : -0.42, 0);
       camera.updateProjectionMatrix();
       composer?.setSize(w, h); composer?.setPixelRatio(dpr); bloom?.setSize(w * dpr, h * dpr);
     },
@@ -360,6 +376,7 @@ export async function criar(canvas, { forte = true, modelo = '/modelos/manuel.gl
         }
         a.pts.geometry.attributes.color.needsUpdate = true;
       }
+      nos.material.uniforms.uT.value = T;
       // ── brasas dos olhos ──
       const vivo = (pl, i, nascer) => { pl.vida[i] -= dt; if (pl.vida[i] <= 0) nascer(i); return 1 - pl.vida[i] / pl.dur[i]; };
       if (olhosPos.length) for (let i = 0; i < brasas.n; i++) {
