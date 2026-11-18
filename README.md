@@ -16,6 +16,13 @@ Centro de comando **privado** da carteira INSA Dividend Army. É a sucessora do 
 | Peso do app | 412 KB de JS | 35 KB (12 KB comprimido) |
 | Hospedagem | Presa ao Manus | Sua conta Cloudflare (plano gratuito) |
 
+## Novidades da 2.7 · Manuel sente a carteira, responde ao toque e avisa sozinho
+
+- **Clima da carteira:** a expressão (sério, neutro, confiante, atento) e a cor do brilho atrás da cabeça acompanham o resultado do dia: âmbar em queda, verde-água em alta. Atualiza a cada carga de dados e no radar ao vivo.
+- **Toques no avatar:** um toque chama o Manuel (ele olha para onde tocou, acena e escuta); tocar enquanto ele fala o cala; dois toques pedem a leitura do dia. No terminal em tela cheia, tocar no rosto não fecha mais (fecha no ✕ ou puxando para cima).
+- **Dados holográficos:** quando ele cita um ativo, o patrimônio, o caixa ou a renda, cartões com o valor flutuam ao redor do rosto por alguns segundos (verde em alta, âmbar em queda).
+- **Avisos proativos:** alertas críticos e movimentos de 3% ou mais num pelotão acendem a aba em vermelho com o número de avisos e mostram um aviso rápido. Ao abrir, o Manuel lê os avisos primeiro. Cada aviso aparece uma vez por dia; ele nunca fala sem ser chamado. Com o app aberto, olha o mercado a cada 10 minutos.
+
 ## Novidades da 2.6 · Manuel vivo no console e terminal deslizante
 
 - **Avatar no console:** o busto 3D fica no topo do console do Manuel. Ao digitar ou rolar a conversa, encolhe para só o rosto e fica preso no topo (sem anéis e com menos brilho, para não estourar em tela pequena).

@@ -632,7 +632,7 @@ async function radar() {
 async function liveTick(forcar) {
   const el = document.getElementById('live'); if (!el) return;
   const prev = new Map((LIVE?.ativos || []).concat(LIVE?.indices || []).map(r => [r.ticker, r.preco]));
-  try { LIVE = await api('/api/market/live' + (forcar ? '?forcar=1' : '')); }
+  try { LIVE = await api('/api/market/live' + (forcar ? '?forcar=1' : '')); vigiar(LIVE); }
   catch (e) { el.innerHTML = `<div class="alert atencao">Mercado indisponível agora: ${esc(e.message)}</div>`; return; }
   const L = LIVE, t = L.totais, pg = L.pregao;
   const flash = (r) => { const p = prev.get(r.ticker); return p == null || r.preco == null || p === r.preco ? '' : r.preco > p ? 'flash-up' : 'flash-down'; };
@@ -840,6 +840,7 @@ function falar(texto, botao, { tela = false } = {}) {
   const limpo = paraFala(texto);
   if (!limpo) return;
   VOZ.ultimaFala = String(texto);
+  setTimeout(() => rostoAberto()?.dados?.(dadosDaFala(texto)), 0);
   const rosto = tela && pref('rosto') ? abrirRostoManuel() : rostoAberto();
   if (cfg.voz_motor === 'desligada') { rosto?.legenda(texto); return; }
   if (botao) { botao.disabled = true; botao.dataset.rotuloOriginal ??= botao.textContent; botao.textContent = '⏳ carregando…'; }
@@ -909,7 +910,7 @@ function abrirRostoManuel() {
   const t = S?.totais || {}, agora = new Date().toLocaleTimeString('pt-BR');
   const telemetria = [`T ${agora} :: SYS.MANUEL ONLINE`, `PATRIMONIO ${brl(t.patrimonio)}`, `CAIXA ${brl(t.caixa)} :: RENDA/MES ${brl(t.renda_mes_estimada)}`, `RESULTADO.DIA ${brl(t.resultado_dia)}`,
     ...(S?.posicoes || []).map(p => `${p.ticker} ${nf(p.preco)} ${p.var_dia >= 0 ? '+' : ''}${nf(p.var_dia ?? 0)}% :: ${String(p.zona || '').toUpperCase()} :: Q${p.qtd}`)];
-  return abrirRosto({ estado: estadoHumor(), telemetria, aoFechar: () => { pararFala(); VOZ.ouvindo?.parar(); VOZ.ouvindo = null; clearTimeout(VOZ.ocioso); setTimeout(retomarEscuta, 600); }, aoMicrofone: podeOuvir() ? (b) => ligarMic(b) : null });
+  return abrirRosto({ estado: estadoHumor(), telemetria, aoFechar: () => { pararFala(); VOZ.ouvindo?.parar(); VOZ.ouvindo = null; clearTimeout(VOZ.ocioso); setTimeout(retomarEscuta, 600); }, aoMicrofone: podeOuvir() ? (b) => ligarMic(b) : null, aoToque: tocarAvatar });
 }
 const ehLongo = (t) => String(t || '').length > 420;
 async function processarFala(falado) {
@@ -1084,6 +1085,7 @@ async function abrirTerminal() {
   if (rostoAberto() && !avatarConsole()?.ativo) return;
   const r = abrirRostoManuel();
   navigator.vibrate?.(12);
+  if (mostrarAvisos(r)) return;
   if (VOZ.ultimaFala) { r.legenda(VOZ.ultimaFala); return; }
   r.legenda('Às suas ordens, Comandante.');
   try {   // sem fala recente: mostra a leitura do dia (sem falar; o Comandante segura o botão se quiser)
@@ -1093,6 +1095,73 @@ async function abrirTerminal() {
     if (leitura && rostoAberto() === r) r.legenda(leitura[0].toUpperCase() + leitura.slice(1));
   } catch { /* fica a saudação curta */ }
 }
+
+/* ───── 6 · toques no avatar ───── */
+function tocarAvatar(tipo) {
+  if (tipo === 'duplo') { pararFala(); saudacaoDiaria(true); return; }
+  const r = rostoAberto(); if (!r) return;
+  if (FALA_ATIVA()) { pararFala(); r.legenda('Às ordens, Comandante.'); return; }   // tocar enquanto ele fala = calar
+  if (AVISOS.length) { mostrarAvisos(r); return; }
+  if (podeOuvir()) { atenderChamada(); return; }
+  r.legenda('Às ordens, Comandante. Escreva abaixo ou toque duas vezes para a leitura do dia.');
+}
+const FALA_ATIVA = () => !!AUDIO || (('speechSynthesis' in window) && speechSynthesis.speaking);
+
+/* ───── 7 · dados holográficos: o que ele cita aparece ao redor do rosto ───── */
+function dadosDaFala(texto) {
+  const t = String(texto || ''), out = [], tot = S?.totais || {};
+  for (const p of S?.posicoes || []) {
+    if (!new RegExp('\\b' + p.ticker + '\\b', 'i').test(t)) continue;
+    const v = p.var_dia ?? 0;
+    out.push({ rotulo: p.ticker, valor: brl(p.preco), extra: `${v > 0 ? '+' : ''}${nf(v)}% · ${p.qtd} cotas`, sinal: Math.sign(v) });
+  }
+  if (/patrim[oô]nio/i.test(t) && tot.patrimonio != null) out.unshift({ rotulo: 'Patrimônio', valor: brl(tot.patrimonio), extra: `dia ${tot.resultado_dia > 0 ? '+' : ''}${brl(tot.resultado_dia)}`, sinal: Math.sign(tot.resultado_dia || 0) });
+  if (/\bcaixa\b/i.test(t) && tot.caixa != null) out.push({ rotulo: 'Caixa', valor: brl(tot.caixa) });
+  if (/\brenda\b|provent/i.test(t) && tot.renda_mes_estimada != null) out.push({ rotulo: 'Renda/mês', valor: brl(tot.renda_mes_estimada), sinal: 1 });
+  return out.slice(0, 4);
+}
+
+/* ───── 8 · avisos proativos: o Manuel nota sozinho e acende a aba (sem falar sem ser chamado) ───── */
+let AVISOS = [];
+const chaveAvisos = () => 'insa.avisos.' + hoje();
+function vigiar(live = null) {
+  if (!S || offline) return;
+  let vistos = []; try { vistos = JSON.parse(localStorage.getItem(chaveAvisos()) || '[]'); } catch {}
+  const novos = [];
+  for (const a of S.alertas || []) if (a.nivel === 'critico') novos.push({ id: 'al:' + a.texto, texto: a.texto, sinal: -1 });
+  const vars = new Map((live?.ativos || []).map(a => [a.ticker, a.var]));
+  for (const p of S.posicoes || []) {
+    const v = vars.get(p.ticker) ?? p.var_dia; if (v == null || Math.abs(v) < 3) continue;
+    const forte = Math.abs(v) >= 5 ? 5 : 3;
+    novos.push({ id: `mv:${p.ticker}:${Math.sign(v)}${forte}`, ticker: p.ticker, sinal: Math.sign(v),
+      texto: `${p.ticker} ${v > 0 ? 'sobe' : 'cai'} ${nf(Math.abs(v))}% hoje, a ${brl(p.preco)}.${v < 0 && p.zona === 'ataque' ? ' Está em zona de ataque.' : ''}` });
+  }
+  const antes = AVISOS.length;
+  AVISOS = novos.filter(n => !vistos.includes(n.id));
+  PUXA?.classList.toggle('aviso', AVISOS.length > 0);
+  if (PUXA) PUXA.dataset.n = AVISOS.length || '';
+  if (AVISOS.length > antes) {
+    const av = avatarConsole();
+    if (av?.ativo) { av.humor({ ...estadoHumor(), alertas: AVISOS.length }); av.gesto('duvida'); }
+    toast(`M.A.N.U.E.L.: ${AVISOS.length === 1 ? 'um aviso' : AVISOS.length + ' avisos'}. ${av?.ativo ? 'Toque no rosto dele.' : 'Toque no ponto do topo.'}`, 5000);
+  }
+}
+function mostrarAvisos(r) {
+  if (!AVISOS.length) return false;
+  const txt = 'Comandante, ' + (AVISOS.length === 1 ? 'um aviso: ' : AVISOS.length + ' avisos. ') + AVISOS.map(a => a.texto).join(' ');
+  r.humor({ ...estadoHumor(), alertas: AVISOS.length }); r.gesto?.('duvida');
+  const tks = new Set(AVISOS.map(a => a.ticker).filter(Boolean));
+  try { const vistos = JSON.parse(localStorage.getItem(chaveAvisos()) || '[]'); localStorage.setItem(chaveAvisos(), JSON.stringify([...vistos, ...AVISOS.map(a => a.id)])); } catch {}
+  AVISOS = []; PUXA?.classList.remove('aviso'); if (PUXA) PUXA.dataset.n = '';
+  falar(txt, null, { tela: true }); r.legenda(txt);
+  setTimeout(() => r.dados?.((S?.posicoes || []).filter(p => tks.has(p.ticker)).map(p => ({ rotulo: p.ticker, valor: brl(p.preco), extra: `${p.var_dia > 0 ? '+' : ''}${nf(p.var_dia ?? 0)}%`, sinal: Math.sign(p.var_dia || 0) }))), 50);
+  return true;
+}
+// vigia leve: a cada 10 min com o app visível, olha o mercado (o servidor já guarda as cotações em cache)
+setInterval(async () => {
+  if (document.visibilityState !== 'visible' || !S || offline || curView() === 'radar') return;
+  try { vigiar(await api('/api/market/live')); } catch { /* sem mercado agora */ }
+}, 600000);
 async function saudacaoDiaria(forcar = false) {
   if (!forcar && (!pref('saudacao') || localStorage.getItem('insa.saudacao.dia') === hoje())) return;
   try { localStorage.setItem('insa.saudacao.dia', hoje()); } catch {}
@@ -1161,7 +1230,7 @@ async function manuel() {
     th.style.maxHeight = Math.max(min, sobra) + 'px'; th.style.minHeight = Math.min(300, Math.max(min, sobra)) + 'px'; };
   // avatar vivo no topo do console
   const hostAv = document.getElementById('avatar-host');
-  const av = hostAv ? abrirRosto({ host: hostAv, estado: estadoHumor() }) : null;
+  const av = hostAv ? abrirRosto({ host: hostAv, estado: estadoHumor(), aoToque: tocarAvatar }) : null;
   av?.enquadrar('busto');
   if (hostAv) hostAv.style.setProperty('--topo', (document.getElementById('hudtop')?.offsetHeight || 0) + 'px');
   const compactar = (sim) => { if (!av || hostAv.classList.contains('compacto') === sim) return; hostAv.classList.toggle('compacto', sim); av.enquadrar(sim ? 'rosto' : 'busto'); setTimeout(ajustar, 380); };
@@ -1223,7 +1292,7 @@ async function manuel() {
 
 // ───────── dados e rotas ─────────
 async function load() {
-  try { S = await api('/api/state'); offline = false; cacheSet(S); }
+  try { S = await api('/api/state'); offline = false; cacheSet(S); setTimeout(() => { rostoAberto()?.humor(estadoHumor()); vigiar(); }, 0); }
   catch (e) {
     if (e.message === 'Sessão expirada.') throw e;
     const c = cacheGet(); if (!c) throw e; S = c; offline = true;

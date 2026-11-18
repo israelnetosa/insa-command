@@ -151,7 +151,7 @@ const pref3d = () => { try { return localStorage.getItem('insa.pref.rosto3d') !=
  * Abre o rosto em tela cheia. Devolve um controle:
  *  falar(texto, { audio, fala })  · posicao(charIndex) · ouvindo(bool, parcial) · legenda(t) · humor(estado) · fechar()
  */
-export function abrirRosto({ estado = {}, aoFechar, aoMicrofone, telemetria = [], host = null } = {}) {
+export function abrirRosto({ estado = {}, aoFechar, aoMicrofone, aoToque, telemetria = [], host = null } = {}) {
   // host: modo console (avatar embutido na página, sem tomar a tela)
   if (!host && ATUAL) { ATUAL.humor(estado); return ATUAL; }
   if (host && AVATAR) { AVATAR.humor(estado); AVATAR.montar(host); return AVATAR; }
@@ -166,7 +166,7 @@ export function abrirRosto({ estado = {}, aoFechar, aoMicrofone, telemetria = []
   el.innerHTML = `<div class="rosto-telemetria" aria-hidden="true"><div class="tl-col">${coluna(1)}</div><div class="tl-col tl-dir">${coluna(5)}</div></div><canvas class="rosto-cv rosto-cv3d" hidden></canvas><canvas class="rosto-cv"></canvas>
     <div class="rosto-topo"><span class="rosto-nome">M.A.N.U.E.L.</span><span class="rosto-estado" id="rosto-estado">em linha</span>
       <button type="button" class="rosto-x" aria-label="Fechar">✕</button></div>
-    <div class="rosto-baixo"><p class="rosto-legenda" id="rosto-leg" aria-live="polite"></p>
+    <div class="rosto-dados" id="rosto-dados" aria-live="polite"></div><div class="rosto-baixo"><p class="rosto-legenda" id="rosto-leg" aria-live="polite"></p>
       ${aoMicrofone ? '<button type="button" class="rosto-mic" id="rosto-mic" aria-label="Segure para falar"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 15a3.5 3.5 0 0 0 3.5-3.5v-6a3.5 3.5 0 1 0-7 0v6A3.5 3.5 0 0 0 12 15zm6-3.5a1 1 0 1 1 2 0 8 8 0 0 1-7 7.94V21h3a1 1 0 1 1 0 2H8a1 1 0 1 1 0-2h3v-1.56A8 8 0 0 1 4 11.5a1 1 0 1 1 2 0 6 6 0 0 0 12 0z"/></svg>segure para falar</button>' : ''}</div>`;
   if (host) host.appendChild(el); else { document.body.appendChild(el); document.documentElement.classList.add('com-rosto'); }
   const cv = el.querySelector('canvas.rosto-cv:not(.rosto-cv3d)'), ctx = cv.getContext('2d', { alpha: true, desynchronized: true });
@@ -238,7 +238,16 @@ export function abrirRosto({ estado = {}, aoFechar, aoMicrofone, telemetria = []
   el.addEventListener('pointerleave', () => { ponteiro = null; });
   const mic = el.querySelector('#rosto-mic');
   if (mic && aoMicrofone) aoMicrofone(mic);
-  if (!host) el.addEventListener('click', (e) => { if ((e.target === cv || e.target === cv3) && !ouvindoAgora) fechar(); });
+  // toques no avatar: um toque chama (ele olha e escuta), dois toques pedem a leitura do dia
+  let toqueEspera = 0, ultimoToque = 0;
+  el.addEventListener('click', (e) => {
+    if (e.target !== cv && e.target !== cv3) return;
+    const b = el.getBoundingClientRect(); olharFixo = { v: alvoTela(e.clientX, e.clientY), ate: performance.now() + 1500 };
+    const agora = performance.now();
+    if (agora - ultimoToque < 320) { clearTimeout(toqueEspera); ultimoToque = 0; pulso = 0.8; aoToque?.('duplo'); return; }
+    ultimoToque = agora; void b;
+    toqueEspera = setTimeout(() => { pulso = Math.max(pulso, 0.45); gesto = { tipo: 'sim', t0: T }; aoToque?.('toque'); }, 320);
+  });
   let ultimoPonteiro = 0, olharFixo = null, pensando = false, gesto = null, pulso = 0;
 
   const ctrl = {
@@ -259,6 +268,14 @@ export function abrirRosto({ estado = {}, aoFechar, aoMicrofone, telemetria = []
     },
     legenda(t) { leg.textContent = String(t || '').replace(/\s+/g, ' ').slice(0, 400); },
     humor(e) { estado = { ...estado, ...e }; H_ = humor(estado); },
+    /** dados holográficos: até 4 cartões flutuando ao redor do rosto; somem sozinhos */
+    dados(lista = [], ms = 9000) {
+      const box = el.querySelector('#rosto-dados'); if (!box) return;
+      clearTimeout(box._t);
+      const e_ = (x) => String(x ?? '').replace(/[<>&"]/g, '');
+      box.innerHTML = lista.slice(0, 4).map((d, i) => `<div class="holo-dado holo-${i} ${d.sinal > 0 ? 'pos' : d.sinal < 0 ? 'neg' : ''}"><small>${e_(d.rotulo)}</small><b>${e_(d.valor)}</b>${d.extra ? `<span>${e_(d.extra)}</span>` : ''}</div>`).join('');
+      box._t = setTimeout(() => { box.querySelectorAll('.holo-dado').forEach(n => n.classList.add('some')); setTimeout(() => { box.innerHTML = ''; }, 600); }, ms);
+    },
     pensar(on = true) { pensando = !!on; est.textContent = on ? 'analisando' : (fala?.ativo ? 'falando' : 'em linha'); },
     /** gestos de cabeça: 'sim' (acena, pulso dourado), 'nao' (balança), 'duvida' (inclina) */
     gesto(tipo) { gesto = { tipo, t0: T }; if (tipo === 'sim') pulso = 1; },
@@ -421,7 +438,7 @@ export function abrirRosto({ estado = {}, aoFechar, aoMicrofone, telemetria = []
       else gesto = null;
     }
     pulso = Math.max(0, pulso - dt * 1.1);
-    if (r3) r3.quadro(P, { T, dt, k: entrada, som: nivelSom, falando, ouvindo: ouvindoAgora, pensando, pulso });
+    if (r3) r3.quadro(P, { T, dt, k: entrada, som: nivelSom, falando, ouvindo: ouvindoAgora, pensando, pulso, clima: Math.max(-1, Math.min(1, (Number(estado.variacao_pct) || 0) / 2.5)) });
     else desenhar();
   };
   const iniciar = () => { rodando = true; ult = 0; requestAnimationFrame(quadro); };
