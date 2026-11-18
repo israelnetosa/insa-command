@@ -55,6 +55,50 @@ function corPorDensidade(geo, cor) {
   geo.setAttribute('color', new THREE.BufferAttribute(cores, 3));
 }
 
+/**
+ * Material holográfico com volume: luz de frente-cima (sombra natural nas laterais, sob o nariz e o queixo)
+ * e brilho azul profundo na borda (silhueta). Segue as expressões (morph targets) da cabeça.
+ */
+function matHolo({ pontos = false, cor, borda, opacidade, tamanho = 2, mapa = null, cores = false }) {
+  const m = new THREE.ShaderMaterial({
+    uniforms: { uCor: { value: cor.clone() }, uBorda: { value: borda.clone() }, uOpac: { value: opacidade }, uTam: { value: tamanho }, uMapa: { value: mapa }, uPonto: { value: pontos } },
+    vertexColors: cores, wireframe: !pontos, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    vertexShader: `
+      #include <common>
+      #include <morphtarget_pars_vertex>
+      uniform float uTam;
+      varying float vLuz; varying float vBorda; varying vec3 vCor;
+      void main() {
+        #include <beginnormal_vertex>
+        #include <morphnormal_vertex>
+        #include <begin_vertex>
+        #include <morphtarget_vertex>
+        vec3 n = normalize(normalMatrix * objectNormal);
+        vec4 mv = modelViewMatrix * vec4(transformed, 1.0);
+        float nd = dot(n, normalize(-mv.xyz));
+        vLuz = 0.08 + 0.92 * clamp(dot(n, normalize(vec3(-0.3, 0.5, 0.82))), 0.0, 1.0);
+        vBorda = pow(1.0 - abs(nd), 2.4);
+        vCor = vec3(1.0);
+        #ifdef USE_COLOR
+          vCor = color;
+        #endif
+        gl_Position = projectionMatrix * mv;
+        gl_PointSize = uTam;
+      }`,
+    fragmentShader: `
+      uniform vec3 uCor; uniform vec3 uBorda; uniform float uOpac; uniform sampler2D uMapa; uniform bool uPonto;
+      varying float vLuz; varying float vBorda; varying vec3 vCor;
+      void main() {
+        float a = 1.0;
+        if (uPonto) { a = texture2D(uMapa, gl_PointCoord).a; if (a < 0.02) discard; }
+        vec3 c = uCor * vCor * vLuz + uBorda * vBorda * 1.15;
+        gl_FragColor = vec4(c, a * uOpac * (0.25 + 0.75 * vLuz + vBorda));
+      }`,
+  });
+  Object.defineProperty(m, 'opacity', { get: () => m.uniforms.uOpac.value, set: (v) => { if (m.uniforms) m.uniforms.uOpac.value = v; }, configurable: true });
+  return m;
+}
+
 function texturaIris() {
   const c = document.createElement('canvas'); c.width = c.height = 128;
   const g = c.getContext('2d'), gr = g.createRadialGradient(64, 64, 0, 64, 64, 64);
@@ -107,14 +151,16 @@ export async function criar(canvas, { forte = true, modelo = '/modelos/manuel.gl
   cabeca.material = new THREE.MeshBasicMaterial({ color: 0x020c14, transparent: true, opacity: 0.94, polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 2 });
   cabeca.renderOrder = 0;
   // 2. malha de fios
-  const OP_FIOS = forte ? 0.3 : 0.34, OP_NOS = forte ? 0.5 : 0.9;
-  const fios = new THREE.Mesh(cabeca.geometry, new THREE.MeshBasicMaterial({ color: CIANO, wireframe: true, transparent: true, opacity: OP_FIOS, blending: THREE.AdditiveBlending, depthWrite: false }));
+  const OP_FIOS = forte ? 0.32 : 0.4, OP_NOS = forte ? 0.6 : 0.9;
+  if (!cabeca.geometry.attributes.normal) cabeca.geometry.computeVertexNormals();
+  const AZUL_BORDA = new THREE.Color('#1f6bff');
+  const fios = new THREE.Mesh(cabeca.geometry, matHolo({ cor: CIANO, borda: AZUL_BORDA, opacidade: OP_FIOS }));
   fios.morphTargetInfluences = cabeca.morphTargetInfluences; fios.morphTargetDictionary = cabeca.morphTargetDictionary; fios.renderOrder = 2;
   cabeca.parent.add(fios); fios.position.copy(cabeca.position); fios.quaternion.copy(cabeca.quaternion); fios.scale.copy(cabeca.scale);
   // 3. nós luminosos nos vértices
   const geoNos = forte ? subdividir(cabeca.geometry) : cabeca.geometry;   // ~4× mais nós no aparelho forte
-  corPorDensidade(geoNos, CIANO_CLARO);
-  const nos = new THREE.Points(geoNos, new THREE.PointsMaterial({ vertexColors: true, size: forte ? 2 : 2.6, sizeAttenuation: false, map: ponto, transparent: true, opacity: OP_NOS, blending: THREE.AdditiveBlending, depthWrite: false }));
+  corPorDensidade(geoNos, CIANO_CLARO); if (!geoNos.attributes.normal) geoNos.computeVertexNormals();
+  const nos = new THREE.Points(geoNos, matHolo({ pontos: true, cores: true, cor: new THREE.Color(1, 1, 1), borda: AZUL_BORDA, opacidade: OP_NOS, mapa: ponto, tamanho: (forte ? 2 : 2.6) }));
   nos.morphTargetInfluences = cabeca.morphTargetInfluences; nos.morphTargetDictionary = cabeca.morphTargetDictionary; nos.renderOrder = 3;
   cabeca.parent.add(nos); nos.position.copy(cabeca.position); nos.quaternion.copy(cabeca.quaternion); nos.scale.copy(cabeca.scale);
   // olhos âmbar: íris escura com brilho âmbar no centro real de cada olho
@@ -147,7 +193,7 @@ export async function criar(canvas, { forte = true, modelo = '/modelos/manuel.gl
     for (let j2 = 0; j2 <= NV; j2++) for (let i2 = 0; i2 <= NU; i2++) {
       const jit = () => (Math.random() - 0.5) * 0.012;
       const [x, y, z] = sup(i2 / NU, j2 / NV); pts.push(x + jit(), y + jit(), z + jit());
-      const vv = j2 / NV, f = 0.55 * Math.min(1, vv / 0.15 + 0.2) * Math.pow(1 - vv, 1.5) * (1 - Math.pow(Math.abs(i2 / NU - 0.5) * 2, 3) * 0.7);
+      const vv = j2 / NV, f = 0.4 * Math.min(1, vv / 0.15 + 0.2) * Math.pow(1 - vv, 1.5) * (1 - Math.pow(Math.abs(i2 / NU - 0.5) * 2, 3) * 0.7);
       cores.push(CIANO.r * f, CIANO.g * f, CIANO.b * f);
     }
     for (let j2 = 0; j2 <= NV; j2++) for (let i2 = 0; i2 <= NU; i2++) {
@@ -222,6 +268,13 @@ export async function criar(canvas, { forte = true, modelo = '/modelos/manuel.gl
     const n = forte ? 28 : 14, pc = pool(n, forte ? 3.6 : 3, OURO);
     a.grupo.add(pc.pts); cometas.push({ a, pc, ang: Math.random() * Math.PI * 2, vel: (0.5 + Math.random() * 0.5) * Math.sign(a.vel || 1), raio: a.raio });
   }
+  // bokeh: discos grandes e desfocados ao fundo
+  const bokeh = [];
+  for (let i = 0; i < (forte ? 9 : 5); i++) {
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: ponto, color: i % 3 === 0 ? OURO : CIANO, transparent: true, opacity: 0.05 + Math.random() * 0.06, blending: THREE.AdditiveBlending, depthWrite: false }));
+    const t = 0.25 + Math.random() * 0.6; sp.scale.setScalar(t); sp.position.set((Math.random() - 0.5) * 4.5, (Math.random() - 0.5) * 4, -2.5 - Math.random() * 1.5);
+    sp.userData = { vx: (Math.random() - 0.5) * 0.03, vy: (Math.random() - 0.5) * 0.02, op: sp.material.opacity }; sp.renderOrder = -2; cena.add(sp); bokeh.push(sp);
+  }
   // brilho volumétrico atrás da cabeça
   const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: ponto, color: new THREE.Color('#0d4f66'), transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false }));
   halo.scale.set(4.2, 4.6, 1); halo.position.set(0, -0.1, -1.2); halo.renderOrder = -1; cena.add(halo);
@@ -247,6 +300,7 @@ export async function criar(canvas, { forte = true, modelo = '/modelos/manuel.gl
   let W = 1, H = 1;
   const api = {
     medir(w, h, dpr) {
+      nos.material.uniforms.uTam.value = (forte ? 2 : 2.6) * dpr;
       W = w; H = h; renderer.setPixelRatio(dpr); renderer.setSize(w, h, false);
       camera.aspect = w / h;
       // enquadramento: cabeça no terço de cima, ombros entrando por baixo; no celular em pé, um pouco mais perto
@@ -352,6 +406,7 @@ export async function criar(canvas, { forte = true, modelo = '/modelos/manuel.gl
         pc.g.attributes.position.needsUpdate = pc.g.attributes.color.needsUpdate = true;
       }
       for (const a of aneis) { const l = a.grupo.userData.linha; if (l) l.material.opacity = (a.cor === CIANO ? 0.3 : 0.9) * fade * (falando ? 1 + som * 0.4 : 1); }
+      for (const b of bokeh) { b.position.x += b.userData.vx * dt; b.position.y += b.userData.vy * dt; if (Math.abs(b.position.x) > 2.6) b.userData.vx *= -1; if (Math.abs(b.position.y) > 2.2) b.userData.vy *= -1; b.material.opacity = b.userData.op * fade; }
       halo.material.opacity = (0.45 + (falando ? som * 0.35 : 0) + (ouvindo ? 0.1 : 0)) * fade;
       // ── poeira subindo devagar ──
       const pp = gPo.attributes.position.array;
