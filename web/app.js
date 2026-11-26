@@ -412,6 +412,7 @@ function registrar(params) {
         <p class="muted">${esc(titulo)} · ${esc(body.data)}${po ? ' · ' + esc(po.ticker) : ''}</p>
         <div class="diff"><b></b><b>antes</b><b>depois</b>
           <span>Caixa</span><span class="num">${brl(ef.caixa.antes)}</span><span class="num ${ef.caixa.depois < 0 ? 'neg' : ''}">${brl(ef.caixa.depois)}</span>
+          ${ef.renda_fixa && (ef.renda_fixa.antes || ef.renda_fixa.depois) ? `<span>Renda fixa</span><span class="num">${brl(ef.renda_fixa.antes)}</span><span class="num">${brl(ef.renda_fixa.depois)}</span>` : ''}
           ${po ? `<span>Cotas</span><span class="num">${nf(po.qtd.antes, 2)}</span><span class="num">${nf(po.qtd.depois, 2)}</span>
           <span>Preço médio</span><span class="num">${brl(po.preco_medio.antes)}</span><span class="num">${brl(po.preco_medio.depois)}</span>` : ''}
           ${po?.realizado ? `<span>Realizado</span><span></span><span class="num ${sign(po.realizado)}">${brl(po.realizado)}</span>` : ''}
@@ -821,6 +822,7 @@ function cartaoProposta(p) {
     <div><b>${descLanc(p.lancamento)}</b></div>
     ${p.status === 'pendente' ? `<div class="diff"><b></b><b>antes</b><b>depois</b>
       <span>Caixa</span><span class="num">${brl(ef.caixa?.antes)}</span><span class="num ${ef.caixa?.depois < 0 ? 'neg' : ''}">${brl(ef.caixa?.depois)}</span>
+      ${ef.renda_fixa && (ef.renda_fixa.antes || ef.renda_fixa.depois) ? `<span>Renda fixa</span><span class="num">${brl(ef.renda_fixa.antes)}</span><span class="num">${brl(ef.renda_fixa.depois)}</span>` : ''}
       ${po ? `<span>Cotas</span><span class="num">${nf(po.qtd.antes, 2)}</span><span class="num">${nf(po.qtd.depois, 2)}</span>
       <span>Preço médio</span><span class="num">${brl(po.preco_medio.antes)}</span><span class="num">${brl(po.preco_medio.depois)}</span>` : ''}</div>
       ${(ef.avisos || []).map(a => `<div class="alert atencao">${esc(a)}</div>`).join('')}

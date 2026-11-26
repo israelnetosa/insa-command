@@ -107,6 +107,7 @@ async function previa(env: Env, m: Movement) {
   const lotA = antes.lots.get(t), lotD = depois.lots.get(t);
   const efeito = {
     caixa: { antes: antes.caixa, depois: depois.caixa },
+    renda_fixa: { antes: antes.rf, depois: depois.rf },
     posicao: t ? {
       ticker: t,
       qtd: { antes: lotA?.qtd ?? 0, depois: lotD?.qtd ?? 0 },
