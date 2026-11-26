@@ -620,3 +620,19 @@ html.com-rosto body { overflow: hidden; }
 /* parecer do Board: títulos das 4 seções */
 .md-h { margin: 12px 0 4px; font: 700 11px var(--mono); letter-spacing: .18em; text-transform: uppercase; color: var(--cyan, #48e5ff); }
 .md-h:first-child { margin-top: 0; }
+/* Matriz 5x20 */
+.matriz { display: grid; gap: 12px; }
+.mz-linha { display: grid; grid-template-columns: minmax(120px, 1.1fr) 2fr 86px; gap: 12px; align-items: center; }
+.mz-nome { font: 600 13px var(--head); letter-spacing: .04em; display: grid; gap: 2px; }
+.mz-nome small, .mz-num small { font: 400 10px var(--mono); color: var(--muted, #7fa3b5); letter-spacing: .06em; }
+.mz-barra { position: relative; height: 10px; background: rgba(72,229,255,.07); border: 1px solid rgba(72,229,255,.15); border-radius: 2px; }
+.mz-fill { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, rgba(72,229,255,.35), rgba(72,229,255,.8)); }
+.mz-alvo, .mz-teto, .mz-min { position: absolute; top: -4px; bottom: -4px; width: 2px; background: rgba(216,251,255,.75); }
+.mz-teto { background: #ff5c5c; }
+.mz-min { background: none; border-left: 2px dashed #ffb347; }
+.mz-num { text-align: right; display: grid; } .mz-num b { font: 700 15px var(--head); }
+.mz-congelado .mz-fill { background: linear-gradient(90deg, rgba(255,92,92,.4), #ff5c5c); } .mz-congelado .mz-num small { color: #ff8a8a; }
+.mz-vermelho .mz-fill { background: linear-gradient(90deg, rgba(255,179,71,.4), #ffb347); } .mz-vermelho .mz-num small { color: #ffb347; }
+.mz-verde .mz-num small, .mz-no_alvo .mz-num small { color: #5ff5b8; }
+.mz-bloq { margin: 8px 0 0; padding-left: 18px; font-size: 12px; color: var(--muted, #9fc0cf); display: grid; gap: 4px; }
+@media (max-width: 560px) { .mz-linha { grid-template-columns: 1fr 70px; } .mz-barra { grid-column: 1 / -1; order: 3; } }

@@ -198,6 +198,37 @@ function ring(pctVal, color, label, sub) {
 }
 
 // ───────── cockpit ─────────
+/* Matriz 5x20: peso de cada bloco contra alvo (20%) e teto (25%) */
+function cardMatriz(s) {
+  const mz = s.matriz; if (!mz) return '';
+  const rot = { congelado: 'CONGELADO', abaixo: 'abaixo do alvo', no_alvo: 'no alvo', verde: 'VERDE', vermelho: 'VERMELHO' };
+  const escala = 40;   // a barra vai de 0 a 40%
+  return `<section><h2>Matriz 5x20</h2><div class="card matriz">
+    ${mz.blocos.map(b => `<div class="mz-linha mz-${b.status}">
+      <div class="mz-nome">${esc(b.nome)}<small>${esc((b.tickers || []).join(' · ') || (b.id === 'caixa' ? `caixa ${brl(s.totais.caixa)} · RF ${brl(s.totais.renda_fixa || 0)}` : '—'))}</small></div>
+      <div class="mz-barra" role="img" aria-label="${esc(b.nome)}: ${nf(b.peso)}% (alvo ${b.alvo}%, teto ${b.teto}%)">
+        <span class="mz-fill" style="width:${Math.min(100, b.peso / escala * 100)}%"></span>
+        ${b.minimo ? `<i class="mz-min" style="left:${b.minimo / escala * 100}%"></i>` : ''}
+        <i class="mz-alvo" style="left:${b.alvo / escala * 100}%"></i><i class="mz-teto" style="left:${b.teto / escala * 100}%"></i></div>
+      <div class="mz-num"><b>${nf(b.peso)}%</b><small>${rot[b.status] || ''}</small></div></div>`).join('')}
+    <p class="faint">Linha clara = alvo 20% · linha vermelha = teto 25%${s.matriz.caixa_ok ? '' : ' · tracejada = mínimo de caixa 15%'}.${mz.fii_sub ? ` FIIs: tijolo ${nf(mz.fii_sub.tijolo)}% / papel ${nf(mz.fii_sub.papel)}% (alvo 10% + 10%).` : ''}</p>
+  </div></section>`;
+}
+function cardOrdem(s) {
+  const o = s.ordem_mensal || s.plano || {};
+  const ap = Number(s.aporte_mensal) || 0;
+  const linhas = [
+    o.renda_fixa > 0 ? `<tr><td>Renda fixa</td><td class="faint">liquidez diária${o.trava_caixa ? ' · trava' : ''}</td><td>${brl(o.renda_fixa)}</td></tr>` : '',
+    o.compra ? `<tr><td><span class="tk">${esc(o.compra.ticker)}</span></td><td>${o.compra.qtd} × ${brl(o.compra.preco)}</td><td>${brl(o.compra.valor)}</td></tr>` : '',
+  ].join('');
+  return `<div class="card"><div class="eyebrow">Ordem de execução · aporte de ${brl(ap)}</div>
+    ${linhas ? `<table style="margin-top:8px"><tbody>${linhas}</tbody></table>` : `<p class="muted">Sem destino: defina o aporte mensal nos Ajustes.</p>`}
+    ${o.compra ? `<p class="faint">${esc(o.compra.motivo)}.</p>` : ''}
+    ${(o.bloqueios || []).length ? `<ul class="mz-bloq">${o.bloqueios.map(b => `<li>${esc(b)}</li>`).join('')}</ul>` : ''}
+    <p class="faint">Máximo 2 destinos (Caixa + 1 ativo) até R$ 25 mil. Nunca vende. Ordem limitada.</p>
+    ${o.compra ? `<div class="actions"><a class="btn ghost" href="#/registrar?tipo=compra&ticker=${encodeURIComponent(o.compra.ticker)}&qtd=${o.compra.qtd}&preco=${o.compra.preco}">Registrar compra executada</a>${o.renda_fixa > 0 ? `<a class="btn ghost" href="#/registrar?tipo=aplicacao_rf&valor=${o.renda_fixa}">Registrar aplicação RF</a>` : ''}</div>` : ''}
+  </div>`;
+}
 function leituraPonte(s) {
   const ps = s.posicoes;
   const ataque = ps.filter(p => p.zona === 'ataque').length;
@@ -205,8 +236,9 @@ function leituraPonte(s) {
   const q = quedas[0];
   const partes = [`${ataque} de ${ps.length} ativos estão na zona de ataque.`];
   if (q && q.var_dia < 0) partes.push(`A maior queda medida é ${q.ticker}, em ${nf(q.var_dia)}% contra o fechamento anterior.`);
-  if (s.plano.compras.length) partes.push(`Com o caixa de ${brl(s.totais.caixa)}, o plano compra ${s.plano.compras.map(c => `${c.qtd} ${c.ticker}`).join(' e ')}.`);
-  else if (s.plano.acumulando) partes.push(`Caixa de ${brl(s.totais.caixa)} acumulando para ${s.plano.acumulando.ticker}: faltam ${brl(s.plano.acumulando.falta)} para 1 cota.`);
+  const om = s.ordem_mensal;
+  if (!s.matriz?.caixa_ok) partes.push(`Caixa/RF em ${nf(s.totais.caixa_rf_pct)}%: trava de caixa ativa.`);
+  if (om?.compra || om?.renda_fixa) partes.push(`Próximo aporte: ${[om.renda_fixa ? `${brl(om.renda_fixa)} em renda fixa` : '', om.compra ? `${om.compra.qtd} ${om.compra.ticker}` : ''].filter(Boolean).join(' + ')}.`);
   else if (s.totais.caixa > 0) partes.push(`Caixa de ${brl(s.totais.caixa)} aguardando o próximo aporte.`);
   return partes.join(' ');
 }
@@ -264,17 +296,9 @@ function cockpit() {
     <section class="grid g2">
       <div class="card ponte"><div class="eyebrow">M.A.N.U.E.L. / Leitura da ponte</div><p>${esc(leituraPonte(s))}</p>
         <p class="faint">Calculada no aparelho a partir da carteira e das cotações. Sem IA, instantânea. <a href="#/manuel">Abrir console M.A.N.U.E.L.</a></p></div>
-      <div class="card"><div class="eyebrow">Próximo passo / Plano de compras · ${esc(m.fase?.nome ?? '')}</div>
-        ${s.plano.compras.length ? `<table style="margin-top:8px"><tbody>${s.plano.compras.map(c => `<tr><td><span class="tk">${esc(c.ticker)}</span></td><td>${c.qtd} × ${brl(c.preco)}</td><td>${brl(c.valor)}</td></tr>`).join('')}
-          <tr><td class="faint">sobra</td><td></td><td class="faint">${brl(s.plano.sobra)}</td></tr></tbody></table>
-          <p class="faint">Regra do Board: maior distância abaixo do peso-alvo; empate → BTLG11, CMIG4. Só Fase 1 até R$ 8.000. BBAS3 e BITC11 congelados. Nunca vende.</p>
-          <div class="actions"><a class="btn ghost" href="#/registrar?tipo=compra&ticker=${encodeURIComponent(s.plano.compras[0].ticker)}&qtd=${s.plano.compras[0].qtd}&preco=${s.plano.compras[0].preco}">Registrar compra executada</a></div>`
-          : s.plano.acumulando ? `<p style="margin-top:8px">Acumulando para <span class="tk">${esc(s.plano.acumulando.ticker)}</span>: cota ${brl(s.plano.acumulando.preco)}, faltam <b>${brl(s.plano.acumulando.falta)}</b>.</p>
-            <p class="faint">O caixa não desvia para outro ativo: espera completar 1 cota do 1º da fila (ou soma ao aporte).</p>`
-          : `<p class="muted">Nenhum ativo elegível abaixo do peso-alvo.</p>`}
-        ${(s.plano.fila || []).length ? `<p class="faint" style="margin-top:6px">Fila: ${s.plano.fila.slice(0, 4).map(f => `${esc(f.ticker)} ${nf(f.distancia_pp)} pp`).join(' · ')}</p>` : ''}
-      </div>
+      ${cardOrdem(s)}
     </section>
+    ${cardMatriz(s)}
     ${s.alertas.length ? `<section><h2>Condições</h2>${s.alertas.map(a => `<div class="alert ${a.nivel}"><span>${a.nivel === 'critico' ? '▲' : a.nivel === 'atencao' ? '●' : 'ℹ'}</span><span>${esc(a.texto)}</span></div>`).join('')}</section>` : ''}
     <section class="card"><h2>Fluxo de proventos · ${new Date().getFullYear()}</h2>${calendarChart(s.calendario)}</section>`);
   ligarOphanim(s);
@@ -352,6 +376,8 @@ const TIPOS = {
   provento: ['Provento', ['ticker', 'valor', 'subtipo']], aporte: ['Aporte', ['valor']], retirada: ['Retirada', ['valor']],
   taxa: ['Taxa', ['valor']], desdobramento: ['Desdobramento', ['ticker', 'qtd']], grupamento: ['Grupamento', ['ticker', 'qtd']],
   ajuste_caixa: ['Ajuste de caixa', ['valor']],
+  aplicacao_rf: ['RF: aplicar', ['valor']], resgate_rf: ['RF: resgatar', ['valor']],
+  rendimento_rf: ['RF: saldo/rendimento', ['valor']],
 };
 const CAMPOS = {
   ticker: (v) => `<label>Ativo<input name="ticker" required maxlength="7" value="${esc(v)}" autocapitalize="characters" list="tks" placeholder="ex.: BTLG11"></label>`,
@@ -783,7 +809,7 @@ function md(t) {
   return out + (lista ? '</ul>' : '');
 }
 function descLanc(l) {
-  const tipos = { compra: 'Compra', venda: 'Venda', provento: 'Provento', aporte: 'Aporte', retirada: 'Retirada', taxa: 'Taxa', desdobramento: 'Desdobramento', grupamento: 'Grupamento', ajuste_caixa: 'Ajuste de caixa' };
+  const tipos = { compra: 'Compra', venda: 'Venda', provento: 'Provento', aporte: 'Aporte', retirada: 'Retirada', taxa: 'Taxa', desdobramento: 'Desdobramento', grupamento: 'Grupamento', ajuste_caixa: 'Ajuste de caixa', aplicacao_rf: 'Aplicação RF', resgate_rf: 'Resgate RF', rendimento_rf: 'Saldo/rendimento RF' };
   const qtdp = l.qtd != null && l.preco != null ? `${nf(l.qtd, 0)} × ${brl(l.preco)}${l.custos ? ` + ${brl(l.custos)}` : ''}` : l.qtd != null ? `fator ${nf(l.qtd, 0)}` : brl(l.valor);
   return `${tipos[l.tipo] || l.tipo}${l.ticker ? ' · ' + esc(l.ticker) : ''} · ${qtdp} · ${esc(String(l.data).split('-').reverse().join('/'))}${l.subtipo ? ' · ' + esc(l.subtipo) : ''}`;
 }
@@ -1142,7 +1168,7 @@ async function abrirTerminal() {
   r.legenda('Pronto. Pode perguntar.');
   try {   // sem fala recente: mostra a leitura do dia (sem falar; o Comandante segura o botão se quiser)
     const sd = await api('/api/manuel/saudacao');
-    const leitura = String(sd.texto || '').replace(/^Senhor,?\s*/i, '').split('\n').filter(Boolean).slice(0, 3).join(' ');
+    const leitura = resumoFalado(sd.texto);
     r.humor({ variacao_pct: sd.variacao_pct, alertas: sd.alertas });
     if (leitura && rostoAberto() === r) r.legenda(leitura[0].toUpperCase() + leitura.slice(1));
   } catch { /* fica a saudação curta */ }
@@ -1214,6 +1240,20 @@ setInterval(async () => {
   if (document.visibilityState !== 'visible' || !S || offline || curView() === 'radar') return;
   try { vigiar(await api('/api/market/live')); } catch { /* sem mercado agora */ }
 }, 600000);
+/* Do relatório de 4 seções, a versão para falar: status, alertas principais, a ordem e o próximo marco */
+function resumoFalado(texto) {
+  const sec = {}; let atual = '';
+  for (const l of String(texto || '').split('\n')) {
+    const h = l.match(/^##\s*(\d)/); if (h) { atual = h[1]; sec[atual] = []; continue; }
+    if (atual && l.trim()) sec[atual].push(l.replace(/^[-\d.]+\s*/, '').trim());
+  }
+  if (!sec['1']) return String(texto || '').split('\n').filter(Boolean).slice(0, 3).join(' ');
+  const st = sec['1'].filter(l => /^(Patrim|Caixa|Renda)/.test(l)).map(l => l.replace(/\s*\(ativos[^)]*\)/, ''));
+  const al = (sec['2'] || []).filter(l => !/^Nenhum/.test(l)).slice(0, 2);
+  const ex = (sec['3'] || []).filter(l => /→/.test(l));
+  const rd = (sec['4'] || []).find(l => /faltam/.test(l));
+  return [...st, al.length ? 'Alertas: ' + al.join(' ') : 'Sem alertas de risco.', ex.length ? 'Ordem do próximo aporte: ' + ex.join(' ') : '', rd ? 'Próximo marco: ' + rd : ''].filter(Boolean).join(' ');
+}
 async function saudacaoDiaria(forcar = false) {
   if (!forcar && (!pref('saudacao') || localStorage.getItem('insa.saudacao.dia') === hoje())) return;
   try { localStorage.setItem('insa.saudacao.dia', hoje()); } catch {}
@@ -1222,7 +1262,7 @@ async function saudacaoDiaria(forcar = false) {
     const sd = await api('/api/manuel/saudacao');
     const h = new Date().getHours();
     const oi = h < 12 ? 'Bom dia' : h < 19 ? 'Boa tarde' : 'Boa noite';
-    const leitura = String(sd.texto || '').replace(/^Senhor,?\s*/i, '').split('\n').filter(Boolean).slice(0, 3).join(' ');
+    const leitura = resumoFalado(sd.texto);
     const dia = Math.floor(Date.now() / 86400000);
     const msg = `${oi}. ${leitura} ${MOTIVACAO[dia % MOTIVACAO.length]}`;
     if (!pref('rosto')) { falar(msg); return; }

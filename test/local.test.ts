@@ -17,13 +17,19 @@ function tk() {
     magic: { ativos: ['MXRF11'], proximo: 'AAAA11', custo_total: 11500, cotas_por_mes: 1.48, sem_provento: [] },
     projecao: { marcos: { base: [{ renda: 25, meses: 7 }, { renda: 100, meses: 40 }] } },
     calendario: Array.from({ length: 12 }, (_, i) => ({ mes: 'm' + i, recebido: 1, estimado: 2 })),
-    alertas: [{ texto: 'R$ 300,00 em caixa: caixa parado.' }], em_pregao: true, aporte_mensal: 500, politica: { fase1: ['AAAA11'], congelados: ['BBAS3'], liberar_fases_acima: 8000 }, plano: { compras: [], sobra: 300, fila: [{ ticker: 'AAAA11', alvo: 50, peso: 20, distancia_pp: 30, falta: 690, preco: 100 }] }, regras: ['Comprar o mais atrasado.'], estrategia: null,
+    alertas: [{ texto: 'R$ 300,00 em caixa: caixa parado.' }], em_pregao: true, aporte_mensal: 500, matriz: { caixa_pct: 13.04, caixa_ok: false, regras: { congelados: ['BBAS3'] }, blocos: [
+      { id: 'caixa', nome: 'Caixa / Renda Fixa', peso: 13.04, alvo: 20, teto: 25, status: 'vermelho', tickers: [] },
+      { id: 'fiis', nome: 'FIIs', peso: 86.96, alvo: 20, teto: 25, status: 'congelado', tickers: ['AAAA11', 'MXRF11'] }] },
+    plano: { renda_fixa: 0, compra: null, fila: [], bloqueios: [], destinos: 0 },
+    ordem_mensal: { renda_fixa: 250, compra: { ticker: 'AAAA11', qtd: 2, preco: 100, valor: 200, motivo: 'FIIs 5 pp abaixo do alvo' }, sobra_para_rf: 50, trava_caixa: true, destinos: 2,
+      fila: [{ bloco: 'fiis', distancia_pp: 5, candidatos: [{ ticker: 'AAAA11', desconto_pm: -1, var_dia: 0.4, preco: 100, fomo: false }] }], bloqueios: ['Trava de caixa: teste.'] },
+    radar: [{ marco: 100, atingido: false, progresso: 13, falta: 87, capital_extra: 13000 }, { marco: 500, atingido: false, progresso: 2.6, falta: 487, capital_extra: null }], regras: ['Comprar o mais atrasado.'], estrategia: null,
   };
   const t: Toolkit = {
     state: async () => st,
     ultimos: async () => [],
     cotacao: async () => ({ preco: 101, variacao: 1, fonte: 'yahoo' }),
-    simular: async (v) => { simulados.push(v); return { caixa_atual: 300, aporte: v, disponivel: 300 + v, fase: 'Fase 1', compras: [{ ticker: 'AAAA11', qtd: 8, preco: 100, valor: 800 }], sobra: 0, renda_mensal_adicional_estimada: 6.4 }; },
+    simular: async (v) => { simulados.push(v); return { caixa_atual: 300, aporte: v, ordem: { renda_fixa: v / 2, compra: { ticker: 'AAAA11', qtd: 8, preco: 100, valor: 800, motivo: 'FIIs abaixo do alvo' }, trava_caixa: true, destinos: 2, sobra_para_rf: 0, fila: [], bloqueios: [] }, renda_mensal_adicional_estimada: 6.4 }; },
     propor: async (l) => { const p = { id: propostas.length + 1, lancamento: { custos: 0, ...l }, efeito: { caixa: { antes: 300, depois: 10 }, posicao: l.ticker ? { ticker: l.ticker, qtd: { antes: 10, depois: 13 }, preco_medio: { antes: 100, depois: 99 } } : null, avisos: [] } }; propostas.push(p); return p; },
   };
   return { t, propostas, simulados };
@@ -46,20 +52,21 @@ test('onde aplicar um aporte: simula sem IA e sem tokens', async () => {
   assert.equal(r!.provedor, 'Local');
   assert.deepEqual(r!.uso, { entrada: 0, saida: 0 });
   assert.deepEqual(simulados, [1500]);
-  assert.match(r!.texto, /## Resumo Executivo C-Level[\s\S]*AAAA11: 8 × R\$ 100,00[\s\S]*## O Veredito do Board\n\*\*Aprovado/);
+  assert.match(r!.texto, /## 1\. Status do Núcleo[\s\S]*VERMELHO[\s\S]*## 2\. Alertas de Risco[\s\S]*CONGELADO[\s\S]*## 3\. Ordem de Execução[\s\S]*R\$ 750,00 → Renda Fixa[\s\S]*8 × AAAA11[\s\S]*## 4\. Radar de Escala/);
   const r2 = await responderLocal('onde aplicar?', t, agora);
-  assert.match(r2!.texto, /caixa R\$ 300,00/);
+  assert.deepEqual(simulados, [1500, 500]);   // sem valor: usa o aporte mensal
+  assert.match(r2!.texto, /R\$ 250,00 → Renda Fixa/);
 });
 
 test('intenções do dia a dia respondem localmente', async () => {
   const { t } = tk();
   const casos: [string, RegExp][] = [
-    ['Leitura do dia', /Patrimônio R\$ 2\.300,00/],
+    ['Leitura do dia', /Patrimônio total: R\$ 2\.300,00/],
     ['Quais pelotões estão na zona de ataque?', /zona de ataque: AAAA11/],
     ['Magic Number', /ativo em MXRF11[\s\S]*Próximo a ativar: AAAA11/],
     ['Quando chego no próximo marco?', /~7 meses/],
     ['Renda do mês', /Maiores pagadores: MXRF11/],
-    ['Varra as oportunidades da fase', /1\. AAAA11/],
+    ['Varra as oportunidades da fase', /1\. FIIs: 5 pp abaixo · AAAA11/],
     ['e o AAAA11?', /AAAA11: 10 cotas/],
     ['bom dia', /Leitura com o pregão aberto/],
   ];
@@ -92,7 +99,7 @@ test('lançamentos em texto viram proposta (nada é gravado)', async () => {
 test('dossiê compacto: bem menor que antes', async () => {
   const { t } = tk();
   const d = await dossie(t, { regras: ['Comprar o mais atrasado.'], agora });
-  assert.match(d, /AAAA11 10 100 100 0\.4% 25\/60 ataque/);
+  assert.match(d, /AAAA11 10 100 100 0\.4% 25 fiis ataque/);
   assert.ok(d.length < 1200, `dossiê com ${d.length} caracteres`);
 });
 
@@ -106,7 +113,7 @@ test('modo econômico (estrito): sem "ia:" nunca devolve null, então a IA não 
   }
   const r = await responderLocal('qual o próximo passo para alcançar os 40/mês?', t, agora, true);
   assert.match(r!.texto, /alvo R\$ 40,00\/mês: faltam R\$ 27,00/);
-  assert.match(r!.texto, /8 AAAA11 → \+R\$ 6,40\/mês/);
+  assert.match(r!.texto, /R\$ 250,00 em RF \+ 8 AAAA11 → \+R\$ 6,40\/mês/);
   assert.match((await responderLocal('Pesquise as notícias do AAAA11', t, agora, true))!.texto, /ia: Pesquise/);
   // com o prefixo, vai para a IA
   assert.equal(await responderLocal('ia: analise a carteira', t, agora, true), null);

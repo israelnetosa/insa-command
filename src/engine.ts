@@ -1,10 +1,11 @@
+import { MATRIZ_PADRAO, matrizDe, blocoDe, retratoMatriz, ordemAporte, radarEscala, BLOCOS_DIVIDENDO, type Matriz } from './matriz.ts';
 // INSA Command · motor da carteira
 // Funções puras: recebem o livro-razão e devolvem o estado derivado.
 // Nada aqui faz I/O, por isso é testável e roda igual no servidor e nos testes.
 
 export type Tipo =
   | 'saldo_inicial' | 'compra' | 'venda' | 'provento' | 'aporte' | 'retirada'
-  | 'desdobramento' | 'grupamento' | 'taxa' | 'ajuste_caixa';
+  | 'desdobramento' | 'grupamento' | 'taxa' | 'ajuste_caixa' | 'aplicacao_rf' | 'resgate_rf' | 'rendimento_rf';
 
 export interface Movement {
   id?: number;
@@ -52,6 +53,7 @@ export function replay(movs: Movement[]) {
 
   const lots = new Map<string, Lot>();
   let caixa = 0;
+  let rf = 0;          // renda fixa de liquidez diária (Tesouro Selic / CDB) — bloco Caixa da matriz
   let aportes = 0;
   const proventos: { data: string; ticker: string; valor: number; subtipo?: string | null }[] = [];
   const lot = (t: string) => {
@@ -111,10 +113,13 @@ export function replay(movs: Movement[]) {
       case 'retirada': need(v > 0, 'retirada exige valor > 0'); caixa -= v; aportes -= v; break;
       case 'taxa': need(v > 0, 'taxa exige valor > 0'); caixa -= v; break;
       case 'ajuste_caixa': caixa += v; break;
+      case 'aplicacao_rf': need(v > 0, 'aplicação em renda fixa exige valor > 0'); caixa -= v; rf += v; break;
+      case 'resgate_rf': need(v > 0 && rf + 1e-9 >= v, `resgate acima do saldo em renda fixa (${r2(rf)})`); rf -= v; caixa += v; break;
+      case 'rendimento_rf': rf += v; break;
       default: throw new LedgerError(`tipo desconhecido: ${(m as Movement).tipo}`);
     }
   }
-  return { lots, caixa: r2(caixa), aportes: r2(aportes), proventos };
+  return { lots, caixa: r2(caixa), rf: r2(rf), aportes: r2(aportes), proventos };
 }
 
 /**
@@ -154,69 +159,8 @@ export function zona(preco: number, pm: number, a?: Asset): Zona {
   return 'neutra';
 }
 
-/** Plano de Guerra: regras de alocação do Board (podem ser sobrepostas por settings.politica). */
-export interface Politica {
-  fase1: string[];              // únicos elegíveis enquanto o patrimônio não passar de liberar_fases_acima
-  liberar_fases_acima: number;  // R$: só acima disto ativos de outras fases entram na fila
-  congelados: string[];         // não recebem aporte e não são vendidos
-  desempate: string[];          // prioridade em empate técnico
-  empate_pp: number;            // diferença (pontos percentuais) que conta como empate técnico
-}
-export const POLITICA_PADRAO: Politica = {
-  fase1: ['WEGE3', 'BTLG11', 'NDIV11', 'ITUB4', 'CMIG4'],
-  liberar_fases_acima: 8000,
-  congelados: ['BBAS3', 'BITC11'],
-  desempate: ['BTLG11', 'CMIG4'],
-  empate_pp: 0.5,
-};
-
-export function faseAtual(patrimonio: number, fases: Fase[], pol: Politica = POLITICA_PADRAO): Fase | undefined {
-  // a Fase 1 vale até o limite do Board, mesmo que a fase cadastrada vá além
-  return fases.find((f, i) => { const ate = i === 0 && f.ate != null ? Math.min(f.ate, pol.liberar_fases_acima) : f.ate; return ate == null || patrimonio <= ate; }) ?? fases[fases.length - 1];
-}
-
-export interface LinhaFila { ticker: string; alvo: number; peso: number; distancia_pp: number; falta: number; preco: number }
-
-/** Fila de compra: elegíveis ordenados pela distância abaixo do peso-alvo (pp do patrimônio), com o desempate do Board. */
-export function filaAlocacao(valor: Record<string, number>, total: number, fase: Fase | undefined, precos: Record<string, number>, patrimonio: number, pol: Politica = POLITICA_PADRAO): LinhaFila[] {
-  if (!fase || total <= 0) return [];
-  const restritoFase1 = patrimonio <= pol.liberar_fases_acima;
-  const prio = (t: string) => { const i = pol.desempate.indexOf(t); return i < 0 ? 99 : i; };
-  const linhas = Object.entries(fase.pesos)
-    .filter(([t]) => !pol.congelados.includes(t) && (!restritoFase1 || pol.fase1.includes(t)) && precos[t] > 0)
-    .map(([t, alvo]) => {
-      const peso = ((valor[t] ?? 0) / total) * 100;
-      return { ticker: t, alvo, peso: r2(peso), distancia_pp: r2(alvo - peso), falta: r2((alvo / 100) * total - (valor[t] ?? 0)), preco: precos[t] };
-    })
-    .filter(l => l.distancia_pp > 0);
-  return linhas.sort((a, b) => Math.abs(a.distancia_pp - b.distancia_pp) <= pol.empate_pp ? (prio(a.ticker) - prio(b.ticker)) || (b.distancia_pp - a.distancia_pp) : b.distancia_pp - a.distancia_pp);
-}
-
-/** Sugestão de compra: cotas inteiras SEMPRE no 1º da fila. Se o caixa não paga 1 cota dele, acumula (não desvia para outro). Nunca vende. */
-export function planoCompras(
-  posicoes: { ticker: string; valor: number; preco: number }[],
-  caixa: number, fase: Fase | undefined, precos: Record<string, number>, pol: Politica = POLITICA_PADRAO,
-) {
-  const valor: Record<string, number> = {};
-  for (const p of posicoes) valor[p.ticker] = p.valor;
-  const investido = Object.values(valor).reduce((s, v) => s + v, 0);
-  const patrimonio = investido + Math.max(caixa, 0);
-  const filaInicial = filaAlocacao(valor, patrimonio, fase, precos, patrimonio, pol);
-  if (!fase || caixa <= 0) return { compras: [], sobra: r2(Math.max(caixa, 0)), fila: filaInicial, acumulando: null as null | { ticker: string; preco: number; falta: number } };
-  const compras: Record<string, number> = {};
-  let sobra = caixa, acumulando: null | { ticker: string; preco: number; falta: number } = null;
-  for (let guard = 0; guard < 500; guard++) {
-    const c = filaAlocacao(valor, investido + caixa, fase, precos, patrimonio, pol)[0];
-    if (!c) break;
-    if (c.preco > sobra + 1e-9) { acumulando = { ticker: c.ticker, preco: c.preco, falta: r2(c.preco - sobra) }; break; }
-    compras[c.ticker] = (compras[c.ticker] ?? 0) + 1;
-    valor[c.ticker] = (valor[c.ticker] ?? 0) + c.preco;
-    sobra -= c.preco;
-  }
-  return {
-    compras: Object.entries(compras).map(([ticker, qtd]) => ({ ticker, qtd, preco: precos[ticker], valor: r2(qtd * precos[ticker]) })),
-    sobra: r2(sobra), fila: filaInicial, acumulando,
-  };
+export function faseAtual(patrimonio: number, fases: Fase[]): Fase | undefined {
+  return fases.find(f => f.ate == null || patrimonio <= f.ate) ?? fases[fases.length - 1];
 }
 
 /** Meses até cada marco de renda mensal, com reinvestimento total. */
@@ -246,11 +190,11 @@ export function projecao(patrimonio: number, aporte: number, marcos: number[]) {
 /** Estado completo do cockpit. */
 export function buildState(input: {
   movements: Movement[]; assets: Asset[]; quotes: Quote[];
-  fases: Fase[]; missao: Missao; aporte_mensal: number; politica?: Partial<Politica>;
+  fases: Fase[]; missao: Missao; aporte_mensal: number; matriz?: Partial<Matriz> | null;
   calendario_estimado?: Record<string, number[]>; agora?: Date;
 }) {
   const agora = input.agora ?? new Date();
-  const { lots, caixa, aportes, proventos } = replay(input.movements);
+  const { lots, caixa, rf, aportes, proventos } = replay(input.movements);
   const A = new Map(input.assets.map(a => [a.ticker, a]));
   const Q = new Map(input.quotes.map(q => [q.ticker, q]));
 
@@ -279,7 +223,7 @@ export function buildState(input: {
   });
 
   const investido = linhas.reduce((s, l) => s + l.valor, 0);
-  const patrimonio = investido + caixa;
+  const patrimonio = investido + caixa + rf;
   for (const l of linhas) l.peso = investido ? r2(l.valor / investido * 100) : 0;
   linhas.sort((a, b) => b.valor - a.valor);
 
@@ -301,10 +245,10 @@ export function buildState(input: {
 
   // Marco: usamos a renda estimada até haver 12 meses de recebimentos reais
   const rendaRef = recebida12 > 0 && proventos.some(p => p.data <= corte) ? recebida12 / 12 : rendaEstMes;
-  const proxMarco = input.missao.marcos.find(m => m > rendaRef) ?? input.missao.meta_mensal;
+  const MZ = matrizDe(input.matriz);
+  const proxMarco = MZ.marcos.find(m => m > rendaRef) ?? MZ.meta_mensal;
   const maior = linhas[0];
-  const pol: Politica = { ...POLITICA_PADRAO, ...(input.politica ?? {}) };
-  const fase = faseAtual(patrimonio, input.fases, pol);
+  const fase = faseAtual(patrimonio, input.fases);
   const precos: Record<string, number> = {};
   for (const [t, q] of Q) precos[t] = q.preco;
   for (const l of linhas) precos[l.ticker] ??= l.preco;
@@ -317,10 +261,14 @@ export function buildState(input: {
   if (semCot.length) alertas.push({ nivel: 'atencao', texto: semCot.length === linhas.length
     ? 'Nenhuma cotação disponível ainda: valores calculados pelo preço médio.'
     : `Sem cotação para ${semCot.join(', ')}: valor pelo preço médio.` });
-  if (maior && maior.peso > input.missao.teto_concentracao) alertas.push({ nivel: 'atencao', texto: `${maior.ticker} pesa ${maior.peso.toLocaleString('pt-BR')}% — acima do teto de ${input.missao.teto_concentracao}%.` });
-  if (caixa > 0 && caixa >= Math.min(...linhas.map(l => l.preco).filter(Boolean), Infinity)) alertas.push({ nivel: 'info', texto: `${brl(caixa)} em caixa parado. Veja o plano de compras.` });
+  const posM = linhas.map(l => ({ ticker: l.ticker, valor: l.valor, preco: l.preco, preco_medio: l.preco_medio, var_dia: l.var_dia, tipo: l.tipo, setor: l.setor, qtd: l.qtd }));
+  const matriz = retratoMatriz(posM, caixa, rf, MZ);
+  if (!matriz.caixa_ok) alertas.push({ nivel: 'critico', texto: `Caixa/RF em ${matriz.caixa_pct.toLocaleString('pt-BR')}% do patrimônio (mínimo 15%): trava de caixa ativa — 50% de todo aporte vai para renda fixa.` });
+  for (const b of matriz.blocos) if (b.status === 'congelado') alertas.push({ nivel: 'atencao', texto: `${b.nome} em ${b.peso.toLocaleString('pt-BR')}% (teto ${b.teto}%): congelado para aportes; seus proventos vão para blocos abaixo do alvo.` });
   if (linhas.some(l => l.pm_estimado)) alertas.push({ nivel: 'info', texto: 'Há preços médios estimados (importação). Corrija com as notas de corretagem para precisão total.' });
 
+  // Magic Number só para FIIs e pagadores maduros; crescimento nunca entra (regra 4)
+  for (const l of linhas) if (!BLOCOS_DIVIDENDO.includes(blocoDe(l.ticker, MZ, l))) l.magic = null;
   const comMagic = linhas.filter(l => l.magic);
   const sensor = {
     ativos: comMagic.filter(l => l.magic!.ativo).map(l => l.ticker),
@@ -328,13 +276,14 @@ export function buildState(input: {
     custo_total: r2(comMagic.reduce((s, l) => s + l.magic!.custo_faltante, 0)),
     cotas_por_mes: r2(comMagic.reduce((s, l) => s + l.magic!.cotas_por_mes, 0)),
     sem_provento: linhas.filter(l => !l.magic).map(l => l.ticker),
+    regra: 'só FIIs, bancos e energia (crescimento fora)',
   };
 
   return {
     gerado_em: agora.toISOString(),
     magic: sensor,
     totais: {
-      patrimonio: r2(patrimonio), investido: r2(investido), caixa,
+      patrimonio: r2(patrimonio), investido: r2(investido), caixa, renda_fixa: rf, caixa_rf_pct: matriz.caixa_pct,
       aportes_liquidos: aportes,
       resultado: r2(linhas.reduce((s, l) => s + l.resultado, 0)),
       realizado: r2(linhas.reduce((s, l) => s + l.realizado, 0)),
@@ -346,8 +295,8 @@ export function buildState(input: {
       dy_carteira: investido ? r2(rendaEstMes * 12 / investido * 100) : 0,
     },
     missao: {
-      meta_mensal: input.missao.meta_mensal,
-      progresso_meta: r2(rendaRef / input.missao.meta_mensal * 100),
+      meta_mensal: MZ.meta_mensal, patrimonio_alvo: r2(MZ.meta_mensal * 12 / (MZ.dy_alvo / 100)), dy_alvo: MZ.dy_alvo,
+      progresso_meta: r2(rendaRef / MZ.meta_mensal * 100),
       proximo_marco: proxMarco,
       progresso_marco: r2(rendaRef / proxMarco * 100),
       falta_marco: r2(proxMarco - rendaRef),
@@ -357,9 +306,11 @@ export function buildState(input: {
     },
     posicoes: linhas,
     calendario: porMes,
-    plano: planoCompras(linhas, caixa, fase, precos, pol),
-    politica: pol,
-    projecao: projecao(patrimonio, input.aporte_mensal, input.missao.marcos),
+    matriz: { ...matriz, regras: MZ },
+    plano: ordemAporte(posM, caixa, rf, 0, MZ, precos),
+    ordem_mensal: ordemAporte(posM, caixa, rf, input.aporte_mensal || 0, MZ, precos),
+    radar: radarEscala(rendaRef, MZ, input.aporte_mensal, investido ? rendaEstMes * 12 / investido * 100 : 0),
+    projecao: projecao(patrimonio, input.aporte_mensal, MZ.marcos),
     alertas,
   };
 }

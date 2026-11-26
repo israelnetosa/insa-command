@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { replay, buildState, planoCompras, zona, LedgerError, type Movement } from '../src/engine.ts';
+import { replay, buildState, zona, LedgerError, type Movement } from '../src/engine.ts';
 import { seedMovements } from '../src/seed.ts';
 
 test('preço médio: custos entram, venda não altera o PM e realiza resultado', () => {
@@ -63,8 +63,8 @@ test('importação: saldo inicial + caixa geram estado e plano coerentes (cartei
   assert.equal(st.totais.investido, 2000);
   assert.equal(st.totais.caixa, 300);
   assert.equal(st.totais.renda_mes_estimada, 13);
-  const gasto = st.plano.compras.reduce((s, c) => s + c.valor, 0);
-  assert.ok(gasto <= 300 && st.plano.sobra >= 0 && st.plano.compras.every(c => c.qtd > 0));
+  const o = st.plano;   // sem aporte: a ordem usa só o caixa, nunca passa dele
+  assert.ok((o.compra?.valor ?? 0) <= 300 && o.destinos <= 2 && st.matriz.blocos.length === 5);
 });
 
 test('zona de ataque', () => {
@@ -74,13 +74,6 @@ test('zona de ataque', () => {
   assert.equal(zona(49, 40, { ...a, lo52: 30, hi52: 50 }), 'neutra');
 });
 
-test('plano de compras respeita cotas inteiras e o caixa', () => {
-  const p = planoCompras([{ ticker: 'A', valor: 0, preco: 100 }], 250,
-    { id: 'f', nome: 'f', ate: null, dy: 7, pesos: { A: 50, B: 50 } }, { A: 100, B: 30 });
-  const total = p.compras.reduce((s, c) => s + c.valor, 0);
-  assert.ok(total <= 250);
-  assert.equal(Math.round((total + p.sobra) * 100) / 100, 250);
-});
 
 import { pregao, emPregao } from '../src/market.ts';
 test('relógio do pregão (horário de Brasília)', () => {
@@ -128,30 +121,59 @@ test('bitcoin em reais: BTC-USD × dólar no Yahoo, CoinGecko de reserva', async
   } finally { globalThis.fetch = orig; }
 });
 
-// ───── Plano de Guerra (regras do Board) ─────
-import { filaAlocacao, faseAtual, POLITICA_PADRAO } from '../src/engine.ts';
-const F1 = { id: 'fase1', nome: 'Fase 1', ate: 10000, dy: 7, pesos: { BTLG11: 28, ITUB4: 18, WEGE3: 18, NDIV11: 12, CMIG4: 12, TAEE11: 12 } };
-const F2 = { id: 'fase2', nome: 'Fase 2', ate: 30000, dy: 7, pesos: { BTLG11: 22, BBDC4: 8 } };
+// ───── Matriz 5x20 e as 6 regras ─────
+import { ordemAporte, retratoMatriz, radarEscala, MATRIZ_PADRAO as MZ } from '../src/matriz.ts';
+const P = (ticker: string, qtd: number, preco: number, pm: number, var_dia: number | null = 0) => ({ ticker, qtd, preco, preco_medio: pm, valor: qtd * preco, var_dia });
+// carteira real de 19/11 (aprox.): energia e FIIs acima do teto, caixa quase zero
+const REAL = [P('CMIG4', 79, 10.86, 11.08, -0.64), P('BTLG11', 8, 95.39, 98.41, -1.07), P('MXRF11', 88, 8.54, 8.75), P('ITUB4', 15, 39.95, 39.06, -0.6),
+  P('TAEE11', 11, 40.31, 39.2), P('NDIV11', 3, 112.45, 115.64, -0.93), P('WEGE3', 5, 51.1, 50.26), P('BITC11', 2, 59.81, 66.91),
+  P('EQTL3', 3, 33.31, 37.03), P('BBAS3', 7, 14.11, 20.95), P('RADL3', 7, 13.67, 20.31, -2.57)];
 
-test('Board: só Fase 1, sem congelados nem TAEE11, mais distante do alvo primeiro', () => {
-  const valor = { BTLG11: 774, ITUB4: 608, WEGE3: 260, NDIV11: 343, CMIG4: 865, TAEE11: 449, BBAS3: 100 };
-  const f = filaAlocacao(valor, 4488, F1, { BTLG11: 97, ITUB4: 40, WEGE3: 52, NDIV11: 114, CMIG4: 11, TAEE11: 41, BBAS3: 14 }, 4488);
-  assert.deepEqual(f.map(l => l.ticker), ['WEGE3', 'BTLG11', 'ITUB4', 'NDIV11']);   // CMIG4 acima do alvo, TAEE11 fora da Fase 1
+test('matriz: blocos, caixa vermelho e blocos acima do teto congelados', () => {
+  const r = retratoMatriz(REAL, 10.1, 0, MZ);
+  const b = Object.fromEntries(r.blocos.map(x => [x.id, x]));
+  assert.equal(r.caixa_ok, false);
+  assert.equal(b.energia.status, 'congelado'); assert.equal(b.fiis.status, 'congelado');
+  assert.equal(b.bancos.status, 'abaixo'); assert.ok(Math.abs(r.blocos.reduce((s, x) => s + x.peso, 0) - 100) < 0.05);
 });
 
-test('Board: empate técnico vai para BTLG11, depois CMIG4', () => {
-  const f = filaAlocacao({ BTLG11: 0, CMIG4: 0, WEGE3: 0 }, 1000, { ...F1, pesos: { WEGE3: 20.3, CMIG4: 20.1, BTLG11: 20 } }, { BTLG11: 97, CMIG4: 11, WEGE3: 52 }, 1000);
-  assert.deepEqual(f.map(l => l.ticker), ['BTLG11', 'CMIG4', 'WEGE3']);
+test('trava de caixa: 50% do aporte em RF, o caixa existente não compra RV, só 1 ativo', () => {
+  const o = ordemAporte(REAL, 10.1, 0, 500, MZ);
+  assert.equal(o.trava_caixa, true);
+  assert.ok(o.renda_fixa >= 250);
+  assert.ok(o.compra && o.compra.valor <= 250 + 1e-9);   // RV só com a outra metade
+  assert.ok(o.destinos <= 2);
+  assert.ok(!['energia', 'fiis'].includes(o.compra!.bloco));   // blocos congelados fora
+  assert.ok(!MZ.congelados.includes(o.compra!.ticker));        // BBAS3/BITC11 fora
+  assert.equal(Math.round((o.renda_fixa + o.compra!.valor) * 100), 50000);   // troco vai para RF: nada se perde
 });
 
-test('Board: caixa que não paga 1 cota do 1º da fila acumula (não desvia)', () => {
-  const p = planoCompras([{ ticker: 'WEGE3', valor: 0, preco: 52 }, { ticker: 'CMIG4', valor: 900, preco: 11 }], 40, F1, { WEGE3: 52, CMIG4: 11, BTLG11: 97 });
-  assert.equal(p.compras.length, 0); assert.equal(p.sobra, 40);
-  assert.equal(p.acumulando?.ticker, 'BTLG11'); assert.equal(p.acumulando?.falta, 57);   // BTLG11 é o mais distante; não compra CMIG4 barata no lugar
+test('anti-FOMO: alta >2% no dia sai da frente; abaixo do PM vai antes', () => {
+  const pos = [P('ITUB4', 10, 40, 38, 2.5), P('BBAS3', 1, 14, 20), P('WEGE3', 1, 50, 50), P('CMIG4', 1, 10, 10), P('BTLG11', 1, 95, 95)];
+  const m = { ...MZ, congelados: [] };
+  const o = ordemAporte(pos, 2000, 0, 300, m);
+  const bancos = o.fila.find(f => f.bloco === 'bancos')!;
+  assert.deepEqual(bancos.candidatos.map(c => c.ticker), ['BBAS3', 'ITUB4']);
 });
 
-test('Board: Fase 2 só acima de R$ 8.000', () => {
-  assert.equal(faseAtual(7999, [F1, F2])?.id, 'fase1');
-  assert.equal(faseAtual(8500, [F1, F2])?.id, 'fase2');
-  assert.equal(POLITICA_PADRAO.congelados.includes('BITC11'), true);
+test('anti-pulverização: abaixo de R$ 25 mil, nenhum ticker novo entra na fila', () => {
+  const o = ordemAporte([P('ITUB4', 1, 40, 40)], 0, 1000, 500, MZ);
+  const todos = o.fila.flatMap(f => f.candidatos.map(c => c.ticker));
+  assert.deepEqual(todos, ['ITUB4']);
+});
+
+test('radar: marcos 100 → 500 → 1.000 → 5.000 → 20.000', () => {
+  const r = radarEscala(150, MZ, 500, 9);
+  assert.deepEqual(r.map(x => x.marco), [100, 500, 1000, 5000, 20000]);
+  assert.equal(r[0].atingido, true); assert.equal(r[1].falta, 350);
+});
+
+test('razão: aplicação e resgate de renda fixa movem o caixa', () => {
+  const { caixa, rf } = replay([
+    { data: '2026-01-01', tipo: 'aporte', valor: 1000 },
+    { data: '2026-01-02', tipo: 'aplicacao_rf', valor: 600 },
+    { data: '2026-01-03', tipo: 'resgate_rf', valor: 100 },
+    { data: '2026-01-04', tipo: 'rendimento_rf', valor: 5 },
+  ] as any);
+  assert.equal(caixa, 500); assert.equal(rf, 505);
 });

@@ -16,6 +16,23 @@ Centro de comando **privado** da carteira INSA Dividend Army. É a sucessora do 
 | Peso do app | 412 KB de JS | 35 KB (12 KB comprimido) |
 | Hospedagem | Presa ao Manus | Sua conta Cloudflare (plano gratuito) |
 
+## Novidades da 2.9 · Matriz 5x20 e as 6 regras invioláveis
+
+- **Nova identidade do Manuel:** cérebro quantitativo e auditor de risco. Missão: R$ 20.000/mês em proventos sustentáveis (patrimônio alvo R$ 2.400.000 a DY de 10% a.a.). Direto, numérico, sem floreios.
+- **Matriz 5x20** (`src/matriz.ts`, sobreponível por `settings.matriz`), medida sobre o patrimônio total: Caixa/Renda Fixa (alvo 20%, mínimo 15%), Bancos, Energia, FIIs (10% tijolo + 10% papel) e Crescimento/ETFs — alvo 20%, teto 25% cada.
+- **Regras no motor:**
+  1. trava de caixa: Caixa/RF < 15% → 50% de todo aporte vai para renda fixa e o caixa existente não compra renda variável;
+  2. bloco acima de 25% fica congelado para aportes (proventos vão para os blocos abaixo do alvo);
+  3. anti-FOMO: bloco mais distante abaixo do alvo e, dentro dele, ativo abaixo do PM ou em correção; alta >2% no dia sai da frente;
+  4. Magic Number só para FIIs, bancos e energia;
+  5. anti-pulverização: abaixo de R$ 25 mil, nenhum ticker novo e no máximo 2 destinos (Caixa + 1 ativo);
+  6. nunca vende para rebalancear.
+  BBAS3 e BITC11 continuam congelados individualmente.
+- **Renda fixa no razão:** novos lançamentos "RF: aplicar" (caixa → RF), "RF: resgatar" (RF → caixa) e "RF: saldo/rendimento" (saldo já existente fora do app ou rendimento). Também por texto: "apliquei 250 no tesouro selic", "tenho 3000 em renda fixa".
+- **Relatório obrigatório** (leitura do dia e aporte): 1. Status do Núcleo · 2. Alertas de Risco · 3. Ordem de Execução · 4. Radar de Escala (R$ 100 → 500 → 1.000 → 5.000 → 20.000/mês). A saudação falada usa um resumo dele.
+- **Cockpit:** cartão da Matriz 5x20 (peso × alvo × teto por bloco) e cartão da Ordem de Execução do aporte mensal, com atalhos para registrar a compra e a aplicação em RF.
+- Migração `0006_renda_fixa.sql` amplia os tipos do razão preservando todos os lançamentos.
+
 ## Novidades da 2.8 · Manuel como Estrategista C-Level e o Plano de Guerra no motor
 
 - **Nova identidade do Manuel:** Estrategista Financeiro C-Level e Auditor de Risco. Fala direto, em linguagem de negócios, sem "Senhor", sem "Comandante" e sem clichês militares; exige dados reais antes de dar veredito.

@@ -1,3 +1,4 @@
+import { relatorioNucleo } from './relatorio.ts';
 // M.A.N.U.E.L. · respostas locais (0 tokens)
 //
 // As perguntas do dia a dia (leitura da carteira, onde aplicar um aporte, zona de ataque, Magic Number,
@@ -32,9 +33,6 @@ const TICKER = /\b([a-z]{4}\d{1,2})\b/g;
 
 // Humor de J.A.R.V.I.S.: uma tirada curta no fim, nunca no lugar do dado. Varia por dia e pergunta, sem sorteio.
 const TIRADAS: Record<string, string[]> = {
-  leitura_alta: ['Alta de um dia não muda a tese. Disciplina de aporte mantida.', 'Preço subiu; yield de entrada caiu. Nada a celebrar no fluxo de caixa.'],
-  leitura_baixa: ['Queda de preço melhora o yield de entrada. A regra de alocação não muda.', 'Volatilidade não é perda realizada. Sem vendas.'],
-  leitura: ['Sem eventos materiais. Execução segue o plano.', 'Carteira estável. Próxima decisão: o aporte.'],
   // simular_aporte: sem tirada — o parecer do Board termina no veredito
   zona: ['Preço abaixo do teto não é ordem de compra; a fila do alvo manda.', 'Margem de segurança registrada. Alocação continua pela regra.'],
   magic_number: ['Cada cota reinvestida reduz o custo de capital do próximo aporte.'],
@@ -69,7 +67,7 @@ export async function responderLocal(texto: string, tk: Toolkit, agora = new Dat
   // 1. Lançamentos declarados ("comprei 10 BTLG11 a 98,50") → proposta para confirmar
   const lanc = await lancamento(t, tk, agora, texto);
   if (lanc) return ok(lanc.texto, 'propor_lancamento', [lanc.id]);
-  if (/\b(comprei|vendi|recebi|aportei|depositei|transferi)\b/.test(t)) {
+  if (/\b(comprei|vendi|recebi|aportei|depositei|transferi|apliquei|resgatei)\b/.test(t)) {
     if (!estrito) return null;   // não entendi os números: a IA interpreta
     return ok(['Não consegui ler os números desse lançamento. Formatos que entendo sem IA:',
       '- comprei 3 BTLG11 a 97,80 (opcional: com custos de 0,50)', '- vendi 2 ITUB4 a 40', '- recebi R$ 12,35 do MXRF11 ontem', '- aportei 500',
@@ -96,15 +94,15 @@ export async function responderLocal(texto: string, tk: Toolkit, agora = new Dat
     const aporte = Number(s.aporte_mensal) || 0;
     const sim = await tk.simular(aporte);
     const add = Number(sim.renda_mensal_adicional_estimada) || 0;
-    const compras = (sim.compras || []).map((c: any) => `${c.qtd} ${c.ticker}`).join(' + ');
-    const fila: any[] = (s.plano?.fila ?? []).slice(0, 3);
+    const oc = sim.ordem ?? {};
+    const compras = [oc.renda_fixa > 0 ? `${brl(oc.renda_fixa)} em RF` : '', oc.compra ? `${oc.compra.qtd} ${oc.compra.ticker}` : ''].filter(Boolean).join(' + ');
     return [
       cabecalho ?? '',
       `Renda hoje ${brl(ref)}/mês; alvo ${brl(alvo)}/mês${falta ? `: faltam ${brl(falta)}/mês.` : ': alvo já alcançado.'}`,
-      `Próximo aporte (${brl(aporte)} + caixa ${brl(s.totais.caixa)}): ${compras || 'nenhuma cota inteira cabe'}${add ? ` → +${brl(add)}/mês` : ''}.`,
+      `Próximo aporte (${brl(aporte)}): ${compras || 'nenhum destino'}${add ? ` → +${brl(add)}/mês` : ''}.`,
       falta && add ? (add >= falta ? 'Esse aporte sozinho fecha o alvo.' : `No ritmo atual, ~${Math.ceil(falta / add)} aporte(s) até o alvo (os proventos reinvestidos aceleram).`) : '',
-      fila.length ? `Fila da ${fase?.nome ?? 'fase'}: ${fila.map((f: any, i: number) => `${i + 1}. ${f.ticker} (peso ${num(f.peso)}%/alvo ${num(f.alvo)}%, distância ${num(f.distancia_pp)} pp, faltam ${brl(f.falta)})`).join(' · ')}.` : '',
-      `${mi.em_ataque} ativo(s) em zona de ataque · Magic Number: próximo ${s.magic?.proximo ?? '—'}.`,
+      (oc.bloqueios ?? []).slice(0, 3).map((b: string) => `- ${b}`).join('\n'),
+      `Magic Number (só FIIs, bancos e energia): próximo ${s.magic?.proximo ?? '—'}.`,
     ].filter(Boolean).join('\n');
   };
   if (/(proximos? passos?|analis|alcanc|chegar (a|em|nos?|aos?)|bater (a|o|os)|o que (fazer|faco|fazemos)|plano de acao|como (chego|chegar|acelero|acelerar))/.test(t))
@@ -115,16 +113,20 @@ export async function responderLocal(texto: string, tk: Toolkit, agora = new Dat
   const ehProjecao = /(marco|meta|projec|quanto tempo|quando (vou|chego|atinj|alcan|bato|chegarei))/.test(t);
   if (!ehProjecao && ((valor != null && /(aplic|invest|aport|coloc|compr|distribu|aloc|gastar|usar)/.test(t)) ||
       /(onde aplic|onde invist|plano de compra|o que compr|onde compr|onde coloc|caixa parado|soldado ocioso)/.test(t))) {
-    return ok(parecerBoard(s, await tk.simular(valor ?? 0), valor ?? 0), 'simular_aporte');
+    const v = valor ?? (Number(s.aporte_mensal) || 0);
+    const sim = await tk.simular(v);
+    return ok(relatorioNucleo(s, sim.ordem, v, { rendaExtra: sim.renda_mensal_adicional_estimada }), 'simular_aporte');
   }
 
   // 3. Oportunidades / mais atrasados
   if (/(oportunidad|varr|atrasad|prioridad|o que esta para tras|fila de compra)/.test(t)) {
-    const fila: any[] = s.plano?.fila ?? [];
-    if (!fila.length) return ok('Nenhum ativo elegível abaixo do peso-alvo na fase atual.', 'varrer_oportunidades');
-    return ok([`Fila de alocação (${fase?.nome ?? '—'}, regra do Board):`,
-      ...fila.map((f: any, i: number) => { const p = posicoes.find(x => x.ticker === f.ticker); return `${i + 1}. ${f.ticker}: peso ${num(f.peso)}% / alvo ${num(f.alvo)}% · distância ${num(f.distancia_pp)} pp · faltam ${brl(f.falta)} · cota ${brl(f.preco)}${p?.zona ? ` · zona ${p.zona}` : ''}`; }),
-      `Congelados (sem aporte, sem venda): ${(s.politica?.congelados ?? []).join(', ')}.`,
+    const o = s.ordem_mensal ?? s.plano ?? {};
+    const fila: any[] = o.fila ?? [];
+    if (!fila.length) return ok('Nenhum bloco de renda variável abaixo do alvo e fora do teto: o próximo aporte vai para renda fixa.', 'varrer_oportunidades');
+    const nomes = new Map((s.matriz?.blocos ?? []).map((b: any) => [b.id, b.nome]));
+    return ok(['Fila da matriz 5x20 (bloco mais distante abaixo do alvo primeiro; dentro dele, abaixo do PM e sem alta >2% no dia):',
+      ...fila.map((f: any, i: number) => `${i + 1}. ${nomes.get(f.bloco) ?? f.bloco}: ${num(f.distancia_pp)} pp abaixo · ${(f.candidatos ?? []).map((c: any) => `${c.ticker} ${brl(c.preco)} (${pct(c.desconto_pm)} vs PM${c.fomo ? ', FOMO' : ''})`).join(' · ') || 'sem ativo elegível'}`),
+      ...(o.bloqueios ?? []).map((b: string) => `- ${b}`),
     ].join('\n'), 'varrer_oportunidades');
   }
 
@@ -198,16 +200,11 @@ export async function responderLocal(texto: string, tk: Toolkit, agora = new Dat
   // 9. Leitura do dia
   if (/(resumo|leitura|status|situac|panorama|briefing|relatorio|como (esta|anda|vai|ficou)|^(bom dia|boa tarde|boa noite|ola|oi)\b|carteira hoje|hoje)/.test(t)) {
     const tot = s.totais;
-    const mov = posicoes.filter(p => p.var_dia != null).sort((a, b) => b.var_dia - a.var_dia);
-    const alta = mov[0], baixa = mov[mov.length - 1];
-    return ok([
-      `Leitura ${s.em_pregao ? 'com o pregão aberto' : 'com o pregão fechado'}:`,
-      `- Patrimônio ${brl(tot.patrimonio)} (ativos ${brl(tot.investido)}, caixa ${brl(tot.caixa)}). Dia: ${tot.resultado_dia >= 0 ? '+' : ''}${brl(tot.resultado_dia)}.`,
-      `- Renda estimada ${brl(tot.renda_mes_estimada)}/mês · próximo marco ${brl(s.missao.proximo_marco)} (${num(s.missao.progresso_marco)}%).`,
-      alta && baixa && alta !== baixa ? `- Destaques: ${alta.ticker} ${pct(alta.var_dia)}, ${baixa.ticker} ${pct(baixa.var_dia)}.` : '',
-      `- ${s.missao.em_ataque} ativo(s) em zona de ataque. Magic Number: próximo ${s.magic?.proximo ?? '—'}.`,
-      (s.alertas || []).length ? `- Alertas: ${(s.alertas || []).slice(0, 3).map((a: any) => a.texto).join(' ')}` : '',
-    ].filter(Boolean).join('\n'), tot.resultado_dia > 0.5 ? 'leitura_alta' : tot.resultado_dia < -0.5 ? 'leitura_baixa' : 'leitura');
+    const o = s.ordem_mensal ?? s.plano;
+    const pc = posicoes.find(p => p.ticker === o?.compra?.ticker);
+    const rendaExtra = pc && pc.qtd ? (pc.renda_mes_estimada / pc.qtd) * o.compra.qtd : 0;
+    return ok(`Leitura ${s.em_pregao ? 'com o pregão aberto' : 'com o pregão fechado'}.\n` + relatorioNucleo(s, o, Number(s.aporte_mensal) || 0, { rendaExtra }),
+      tot.resultado_dia > 0.5 ? 'leitura_alta' : tot.resultado_dia < -0.5 ? 'leitura_baixa' : 'leitura');
   }
   if (!estrito) return null;
   // Modo econômico: sem "ia:" a IA nunca é chamada. Devolve o panorama com os próximos passos.
@@ -230,12 +227,23 @@ async function lancamento(t: string, tk: Toolkit, agora: Date, original: string)
     mov = { tipo: 'provento', data, ticker: m[3].toUpperCase(), valor: lerValor(m[1]), subtipo: sub };
   }
   m = mov ? null : t.match(/\b(aportei|depositei|transferi)\s+(?:r\$\s*)?(\d[\d.,]*\s*(?:mil|k)?)/);
-  if (m && !/\b[a-z]{4}\d{1,2}\b/.test(t)) mov = { tipo: 'aporte', data, valor: lerValor(m[2]) };
+  if (m && !/\b[a-z]{4}\d{1,2}\b/.test(t) && !/(renda fixa|tesouro|selic|cdb|cdi)/.test(t)) mov = { tipo: 'aporte', data, valor: lerValor(m[2]) };
+  // renda fixa (bloco Caixa da matriz): aplicar/resgatar movimenta o caixa; "tenho X em renda fixa" registra saldo existente
+  m = mov ? null : t.match(/\b(apliquei|investi|coloquei|resgatei|saquei|tenho|rendeu|rendimento de)\s+(?:r\$\s*)?(\d[\d.,]*\s*(?:mil|k)?)\s*(?:reais\s*)?(?:(?:em|na|no|da|do|de)\s+)?(?:a\s+)?(renda fixa|tesouro(?: selic)?|selic|cdb|cdi|reserva)/);
+  if (m) {
+    const v = lerValor(m[2]);
+    mov = /^(resgatei|saquei)/.test(m[1]) ? { tipo: 'resgate_rf', data, valor: v }
+      : /^(tenho|rendeu|rendimento)/.test(m[1]) ? { tipo: 'rendimento_rf', data, valor: v }
+      : { tipo: 'aplicacao_rf', data, valor: v };
+  }
   if (!mov || [mov.qtd, mov.preco, mov.valor].some(v => v === null || (v !== undefined && !(v > 0)))) return null;
 
   const p = await tk.propor(mov, original.slice(0, 280));
   const L = p.lancamento, e = p.efeito;
   const desc = L.tipo === 'aporte' ? `aporte de ${brl(L.valor)}`
+    : L.tipo === 'aplicacao_rf' ? `aplicação de ${brl(L.valor)} em renda fixa (sai do caixa)`
+    : L.tipo === 'resgate_rf' ? `resgate de ${brl(L.valor)} da renda fixa (volta ao caixa)`
+    : L.tipo === 'rendimento_rf' ? `saldo/rendimento de ${brl(L.valor)} em renda fixa`
     : L.tipo === 'provento' ? `provento (${L.subtipo}) de ${brl(L.valor)} de ${L.ticker}`
     : `${L.tipo} de ${L.qtd} ${L.ticker} a ${brl(L.preco)}${L.custos ? ` + custos ${brl(L.custos)}` : ''}`;
   return { id: p.id, texto: [
@@ -244,50 +252,4 @@ async function lancamento(t: string, tk: Toolkit, agora: Date, original: string)
     ...(e.avisos || []).map((a: string) => `Aviso: ${a}`),
     'Nada foi gravado. Clique em "Confirmar" para lançar no razão.',
   ].join('\n') };
-}
-
-
-/** Parecer no formato do Board: Resumo Executivo, Quantitativa, Qualitativa, Veredito. */
-export function parecerBoard(s: any, r: any, aporte: number): string {
-  const tot = s.totais ?? {}, pos: any[] = s.posicoes ?? [], pol = s.politica ?? {};
-  const pat = Number(tot.patrimonio) || 0, novoPat = pat + aporte;
-  const compras: any[] = r.compras ?? [], fila: any[] = r.fila ?? [], ac = r.acumulando;
-  const investidoAgora = compras.reduce((x, c) => x + c.valor, 0);
-  const rendaAdd = Number(r.renda_mensal_adicional_estimada) || 0;
-  const yieldCompra = investidoAgora ? (rendaAdd * 12) / investidoAgora * 100 : 0;
-  const rendaNova = (Number(tot.renda_mes_estimada) || 0) + rendaAdd;
-  const alvo1 = fila[0];
-  const posDe = (t: string) => pos.find(p => p.ticker === t);
-  const foraPlano = pos.filter(p => !(pol.fase1 ?? []).includes(p.ticker));
-  const pesoFora = foraPlano.reduce((x, p) => x + (p.peso || 0), 0);
-  const maior = s.missao?.maior_posicao;
-  const semAporte = !aporte && !compras.length;
-
-  const resumo = compras.length
-    ? `Executar ${compras.map(c => `${c.qtd} ${c.ticker}`).join(' + ')} (${brl(investidoAgora)}). Caixa remanescente ${brl(r.sobra)}${ac ? `, acumulando para ${ac.ticker} (faltam ${brl(ac.falta)} para 1 cota)` : ''}. Sem vendas, liquidez preservada.`
-    : ac ? `Caixa de ${brl(r.disponivel)} não paga 1 cota de ${ac.ticker} (${brl(ac.preco)}), o ativo mais distante do alvo. Acumular: faltam ${brl(ac.falta)}. Nenhuma compra fora da fila.`
-    : `Nenhum ativo elegível abaixo do peso-alvo. Capital fica em caixa.`;
-
-  const quant = [
-    `- Disponível: ${brl(r.disponivel)} = caixa ${brl(r.caixa_atual)}${aporte ? ` + aporte ${brl(aporte)}` : ''}. Patrimônio ${brl(pat)} → ${brl(novoPat)}.`,
-    ...compras.map(c => { const p = posDe(c.ticker); const pesoDepois = ((p?.valor ?? 0) + c.valor) / (novoPat || 1) * 100; return `- ${c.ticker}: ${c.qtd} × ${brl(c.preco)} = ${brl(c.valor)} · peso ${num(p?.peso ?? 0)}% → ${num(pesoDepois)}%`; }),
-    compras.length ? `- Renda adicional ${brl(rendaAdd)}/mês (yield da compra ${num(yieldCompra)}% a.a.). Renda estimada ${brl(tot.renda_mes_estimada)} → ${brl(rendaNova)}/mês.` : '',
-    `- Sobra ${brl(r.sobra)}${ac ? ` · próxima cota-alvo ${ac.ticker} ${brl(ac.preco)}` : ''}.`,
-    fila.length ? `- Fila (distância ao alvo, pp do patrimônio): ${fila.slice(0, 4).map((f: any) => `${f.ticker} ${num(f.distancia_pp)}`).join(' · ')}.` : '',
-  ].filter(Boolean);
-
-  const qual = [
-    alvo1 && posDe(alvo1.ticker)?.zona === 'espera' ? `- ${alvo1.ticker} está acima do teto Bazin (zona espera): yield de entrada baixo. A regra é matemática e prevalece, mas a compra eleva peso, não renda.` : '',
-    maior && maior.peso > (maior.teto ?? 25) * 0.75 ? `- Concentração: ${maior.ticker} com ${num(maior.peso)}% (teto ${num(maior.teto)}%). Não recebe aporte enquanto estiver acima do alvo.` : '',
-    pesoFora > 0 ? `- ${num(pesoFora)}% do patrimônio está fora da Fase 1 (${foraPlano.map(p => p.ticker).join(', ')}): não recebe aporte e dilui com o tempo. BBAS3 e BITC11 congelados.` : '',
-    `- Proventos 100% reinvestidos (DRIP). Ordem limitada em ativos de baixa liquidez (BTLG11, NDIV11). Cotações com até ~15 min de atraso.`,
-    novoPat <= (pol.liberar_fases_acima ?? 8000) ? `- Fase 1 travada até ${brl(pol.liberar_fases_acima ?? 8000)} de patrimônio: nenhum ativo de outra fase é sugerido.` : '',
-  ].filter(Boolean);
-
-  const veredito = semAporte && ac
-    ? `**Necessita de Dados Operacionais.** Responda: 1) Qual o valor do aporte deste mês? 2) Há proventos a receber nos próximos 30 dias que não estão no razão?`
-    : compras.length ? `**Aprovado.** Executar ${compras.map(c => `${c.qtd} ${c.ticker}`).join(' + ')} com ordem limitada${ac ? `; manter ${brl(r.sobra)} em caixa para ${ac.ticker}` : ''}. Registrar após a execução.`
-    : `**Aprovado: acumular.** Manter ${brl(r.sobra)} em caixa até completar 1 cota de ${ac?.ticker ?? 'o primeiro da fila'}.`;
-
-  return ['## Resumo Executivo C-Level', resumo, '## Análise Quantitativa', ...quant, '## Análise Qualitativa', ...qual, '## O Veredito do Board', veredito].join('\n');
 }

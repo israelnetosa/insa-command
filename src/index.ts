@@ -3,7 +3,8 @@
 
 import { lerBanco, conferir, configurado as bancoConfigurado } from './banco';
 import { handleAuth, currentSession, isConfigured, json, type Env } from './auth';
-import { buildState, replay, planoCompras, faseAtual, LedgerError, type Movement } from './engine';
+import { buildState, replay, LedgerError, type Movement } from './engine';
+import { ordemAporte, matrizDe } from './matriz.ts';
 import { conversar, voz, transcrever, explicarErro, CONFIG_PADRAO, type Toolkit, type IAConfig } from './manuel';
 import { responderLocal, normalizar } from './local';
 import { VOZES_MASCULINAS } from './fala.ts';
@@ -33,7 +34,7 @@ function withHeaders(res: Response, extra: Record<string, string> = {}) {
 }
 
 // saldo_inicial entra também por aqui para corrigir o preço médio de partida (anula-se o antigo e grava-se o novo)
-const MOV_TIPOS = new Set(['saldo_inicial', 'compra', 'venda', 'provento', 'aporte', 'retirada', 'desdobramento', 'grupamento', 'taxa', 'ajuste_caixa']);
+const MOV_TIPOS = new Set(['saldo_inicial', 'compra', 'venda', 'provento', 'aporte', 'retirada', 'desdobramento', 'grupamento', 'taxa', 'ajuste_caixa', 'aplicacao_rf', 'resgate_rf', 'rendimento_rf']);
 
 function normalizeMov(b: any): Movement {
   const tipo = String(b.tipo ?? '');
@@ -72,7 +73,7 @@ async function state(env: Env) {
   const st = buildState({
     movements: d.movements, assets: d.assets, quotes: d.quotes,
     fases: d.settings.fases ?? [], missao: d.settings.missao ?? { meta_mensal: 20000, dy_missao: 7, marcos: [25, 100], teto_concentracao: 25 },
-    aporte_mensal: d.settings.aporte_mensal ?? 0, calendario_estimado: d.settings.calendario_estimado, politica: d.settings.politica,
+    aporte_mensal: d.settings.aporte_mensal ?? 0, calendario_estimado: d.settings.calendario_estimado, matriz: d.settings.matriz,
   });
   return { ...st, regras: d.settings.regras ?? [], lentes: d.settings.lentes ?? [], fases: d.settings.fases ?? [], aporte_mensal: d.settings.aporte_mensal ?? 0, estrategia: d.settings.estrategia ?? null, vazio: d.movements.length === 0, em_pregao: emPregao() };
 }
@@ -148,15 +149,15 @@ function toolkit(env: Env): Toolkit {
       const st = cache ??= await state(env);
       const assets = (await env.DB.prepare('SELECT ticker, div_mes_cota FROM assets').all<any>()).results;
       const dmc = new Map(assets.map((a: any) => [a.ticker, a.div_mes_cota ?? 0]));
-      const fase = faseAtual(st.totais.patrimonio + v, st.fases, st.politica);
       const precos: Record<string, number> = {};
       for (const p of st.posicoes) precos[p.ticker] = p.preco;
-      const q = (await env.DB.prepare('SELECT ticker, preco FROM quotes').all<any>()).results;
-      for (const r of q) precos[r.ticker] ??= r.preco;
-      const plano = planoCompras(st.posicoes, st.totais.caixa + v, fase, precos, st.politica);
-      const rendaExtra = plano.compras.reduce((s, c) => s + c.qtd * (Number(dmc.get(c.ticker)) || 0), 0);
-      return { caixa_atual: st.totais.caixa, aporte: v, disponivel: +(st.totais.caixa + v).toFixed(2), fase: fase?.nome, compras: plano.compras, sobra: plano.sobra, acumulando: plano.acumulando, fila: plano.fila.slice(0, 5),
-        renda_mensal_adicional_estimada: +rendaExtra.toFixed(2), regra: 'Plano de Guerra: só Fase 1 até R$ 8.000; BBAS3 e BITC11 congelados; sempre o mais distante abaixo do peso-alvo; empate técnico (≤0,5 pp) → BTLG11, depois CMIG4; cotas inteiras; se não paga 1 cota do 1º da fila, acumula; proventos 100% reinvestidos; nunca vende' };
+      const MZ = matrizDe(st.matriz?.regras);
+      const posM = st.posicoes.map((p: any) => ({ ticker: p.ticker, valor: p.valor, preco: p.preco, preco_medio: p.preco_medio, var_dia: p.var_dia, tipo: p.tipo, setor: p.setor, qtd: p.qtd }));
+      const o = ordemAporte(posM, st.totais.caixa, st.totais.renda_fixa ?? 0, v, MZ, precos);
+      const rendaExtra = o.compra ? o.compra.qtd * (Number(dmc.get(o.compra.ticker)) || 0) : 0;
+      return { caixa_atual: st.totais.caixa, renda_fixa_atual: st.totais.renda_fixa ?? 0, aporte: v, ordem: o,
+        renda_mensal_adicional_estimada: +rendaExtra.toFixed(2),
+        regra: 'Matriz 5x20: trava de caixa (<15% → 50% do aporte em RF, sem usar o caixa), blocos acima de 25% congelados, anti-FOMO (abaixo do PM/correção primeiro, evita >+2% no dia), sem ticker novo abaixo de R$ 25 mil, no máximo Caixa + 1 ativo, nunca vende' };
     },
     propor: async (args, pedido) => {
       const m = normalizeMov(args);
