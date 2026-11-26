@@ -201,7 +201,7 @@ function ring(pctVal, color, label, sub) {
 /* Matriz 5x20: peso de cada bloco contra alvo (20%) e teto (25%) */
 function cardMatriz(s) {
   const mz = s.matriz; if (!mz) return '';
-  const rot = { congelado: 'CONGELADO', abaixo: 'abaixo do alvo', no_alvo: 'no alvo', verde: 'VERDE', vermelho: 'VERMELHO' };
+  const rot = { congelado: 'CONGELADO', abaixo: 'abaixo do alvo', no_alvo: 'até o teto', verde: 'VERDE', vermelho: 'VERMELHO' };
   const escala = 40;   // a barra vai de 0 a 40%
   return `<section><h2>Matriz 5x20</h2><div class="card matriz">
     ${mz.blocos.map(b => `<div class="mz-linha mz-${b.status}">
@@ -316,9 +316,14 @@ function sensorMagic(m, compacto) {
 }
 
 function posicoes() {
-  const ps = S.posicoes;
+  // ordem de compra teórica: a mesma fila da matriz 5x20 (próxima compra → fila → no alvo → congelados)
+  const lugar = new Map((S.fila_compra || []).map(f => [f.ticker, f]));
+  const ps = [...S.posicoes].sort((a, b) => (lugar.get(a.ticker)?.posicao ?? 99) - (lugar.get(b.ticker)?.posicao ?? 99) || b.valor - a.valor);
+  const ROT = { proxima: 'PRÓXIMA COMPRA', fila: 'NA FILA', no_alvo: 'AGUARDA', bloco_congelado: 'BLOCO CONGELADO', ativo_congelado: 'CONGELADO' };
+  const selo = (p) => { const f = lugar.get(p.ticker); return f ? `<span class="fila-selo fs-${f.grupo}"><b>${f.posicao}º</b> ${ROT[f.grupo]}</span>` : ''; };
+  const porque = (p) => { const f = lugar.get(p.ticker); return f ? `<div class="fila-motivo fs-${f.grupo}">${esc(f.motivo)}</div>` : ''; };
   const row = (p) => `<tr>
-    <td><span class="tk">${esc(p.ticker)}</span><span class="nm">${esc(p.nome)}</span></td>
+    <td>${selo(p)}<span class="tk">${esc(p.ticker)}</span><span class="nm">${esc(p.nome)}</span></td>
     <td class="num">${nf(p.qtd, 0)}</td>
     <td class="num">${brl(p.preco_medio)} ${p.pm_estimado ? '<span class="tag est" title="Preço médio estimado na importação">est.</span>' : ''}</td>
     <td class="num">${brl(p.preco)}<span class="nm">${p.atraso_s != null ? Math.round(p.atraso_s / 60) + ' min · ' : ''}${esc(p.fonte)}</span></td>
@@ -329,13 +334,15 @@ function posicoes() {
     <td>${sensorMagic(p.magic)}</td>
     <td class="num">${p.teto_bazin ? brl(p.teto_bazin) : '—'}</td>
     <td><span class="tag ${p.zona}">${p.zona.replace('_', ' ')}</span></td></tr>`;
-  const card = (p) => `<div class="card tight pc">
+  const card = (p) => `<div class="card tight pc pc-${lugar.get(p.ticker)?.grupo || ''}">
+    <div style="grid-column:1/-1">${selo(p)}</div>
     <div><span class="tk" style="font:700 17px var(--head)">${esc(p.ticker)}</span> <span class="tag ${p.zona}">${p.zona}</span><span class="nm faint" style="display:block">${esc(p.nome)}</span></div>
     <div class="r"><b class="num">${brl(p.valor)}</b><div class="faint">${pct(p.peso)} da carteira</div></div>
     <div class="faint">${nf(p.qtd, 0)} × ${brl(p.preco)} <span class="${sign(p.var_dia)}">${p.var_dia == null ? '' : pct(p.var_dia, 2)}</span></div>
     <div class="r faint">PM ${brl(p.preco_medio)}${p.pm_estimado ? ' (est.)' : ''}</div>
     <div class="faint">renda ${brl(p.renda_mes_estimada)}/mês</div><div class="r ${sign(p.resultado)}">${brl(p.resultado)}</div>
-    <div style="grid-column:1/-1">${sensorMagic(p.magic)}</div></div>`;
+    <div style="grid-column:1/-1">${sensorMagic(p.magic)}</div>
+    <div style="grid-column:1/-1">${porque(p)}</div></div>`;
   if (!ps.length) return frame('posicoes', `<div class="eyebrow">Batalhões</div><h1>Pelotões em campo</h1>
     <div class="card empty"><p>Nenhuma posição registrada ainda. Importe a migração do INSA Wallet para trazer as suas cotas.</p>
     <div class="actions" style="justify-content:center"><a class="btn" href="#/cockpit">Importar posições</a></div></div>`);
@@ -363,7 +370,8 @@ function posicoes() {
         </div>
         <div class="sensor-lista">${ord.map(p => `<div class="sensor-linha"><span class="tk">${esc(p.ticker)}</span>${sensorMagic(p.magic)}</div>`).join('')}</div>
       </section>`; })()}
-    <section><h2>Todos os pelotões</h2>
+    <section><h2>Todos os pelotões · ordem de compra</h2>
+    <p class="faint" style="margin-top:-6px">Na ordem em que receberiam dinheiro pela matriz 5x20: próxima compra, fila (bloco mais abaixo do alvo; dentro dele, abaixo do PM e sem alta &gt;2% no dia), no alvo e congelados. Recalculada a cada cotação.</p>
     <div class="table-wrap pos-table"><table><thead><tr><th>Ativo</th><th>Cotas</th><th>Preço médio</th><th>Cotação</th><th>Dia</th><th>Valor</th><th>Peso</th><th>Resultado</th><th>Renda/mês</th><th style="text-align:left">Magic Number</th><th>Teto Bazin</th><th>Zona</th></tr></thead>
     <tbody>${ps.map(row).join('')}</tbody></table></div>
     <div class="poscards">${ps.map(card).join('')}</div></section>

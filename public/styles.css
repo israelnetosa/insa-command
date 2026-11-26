@@ -636,3 +636,13 @@ html.com-rosto body { overflow: hidden; }
 .mz-verde .mz-num small, .mz-no_alvo .mz-num small { color: #5ff5b8; }
 .mz-bloq { margin: 8px 0 0; padding-left: 18px; font-size: 12px; color: var(--muted, #9fc0cf); display: grid; gap: 4px; }
 @media (max-width: 560px) { .mz-linha { grid-template-columns: 1fr 70px; } .mz-barra { grid-column: 1 / -1; order: 3; } }
+/* ordem de compra nos pelotões */
+.fila-selo { display: inline-flex; gap: 6px; align-items: center; margin: 0 8px 4px 0; padding: 2px 8px; border: 1px solid rgba(72,229,255,.35); font: 600 10px var(--mono); letter-spacing: .14em; color: #a5f3fc; }
+.fila-selo b { font: 700 12px var(--head); color: #fff; }
+.fs-proxima.fila-selo { border-color: #5ff5b8; color: #5ff5b8; background: rgba(52,245,164,.1); box-shadow: 0 0 12px rgba(52,245,164,.25); }
+.fs-no_alvo.fila-selo { border-color: rgba(216,251,255,.3); color: rgba(216,251,255,.6); }
+.fs-bloco_congelado.fila-selo, .fs-ativo_congelado.fila-selo { border-color: rgba(255,92,92,.5); color: #ff8a8a; }
+.fila-motivo { font: 400 11px var(--mono); color: var(--muted, #9fc0cf); border-top: 1px dashed rgba(72,229,255,.15); padding-top: 6px; margin-top: 2px; }
+.fila-motivo.fs-proxima { color: #5ff5b8; }
+.pc-proxima { border-color: rgba(52,245,164,.55) !important; box-shadow: 0 0 22px rgba(52,245,164,.12); }
+.pc-bloco_congelado, .pc-ativo_congelado { opacity: .72; }

@@ -186,3 +186,51 @@ export function radarEscala(rendaMes: number, m: Matriz, aporteMensal = 0, dy = 
     return { marco, atingido: rendaMes >= marco, progresso: r2(Math.min(100, (rendaMes / marco) * 100)), falta: r2(falta), capital_extra: capital != null ? r2(capital) : null };
   });
 }
+
+export interface LugarFila {
+  ticker: string; posicao: number; bloco: BlocoId;
+  grupo: 'proxima' | 'fila' | 'no_alvo' | 'bloco_congelado' | 'ativo_congelado';
+  motivo: string;
+}
+
+/**
+ * Fila completa de compra teórica de TODAS as posições, na ordem em que receberiam dinheiro:
+ * 1º o destino da ordem do aporte; depois os blocos abaixo do alvo (mais distante primeiro; dentro deles, anti-FOMO);
+ * depois os blocos no alvo; por último os congelados (bloco acima do teto ou ativo congelado), que não recebem aporte.
+ */
+export function filaCompleta(pos: PosicaoM[], caixa: number, rf: number, m: Matriz, ordem: Ordem | null, precos: Record<string, number> = {}): LugarFila[] {
+  const ret = retratoMatriz(pos, caixa, rf, m);
+  const nome = (b: BlocoId) => m.blocos.find(x => x.id === b)?.nome ?? b;
+  const intra = (b: BlocoStatus) => {
+    const lista = pos.filter(p => p.qtd > 0 && blocoDe(p.ticker, m, p) === b.id).map(p => {
+      const preco = precos[p.ticker] ?? p.preco;
+      return { p, desconto: p.preco_medio ? (preco / p.preco_medio - 1) * 100 : 0, fomo: (p.var_dia ?? 0) > m.anti_fomo_var };
+    });
+    const frente = b.id === 'fiis' ? (((10 - (ret.fii_sub?.tijolo ?? 0)) >= (10 - (ret.fii_sub?.papel ?? 0))) ? m.fii_tijolo : m.fii_papel) : [];
+    return lista.sort((a, z) => Number(a.fomo) - Number(z.fomo) || Number(frente.includes(z.p.ticker)) - Number(frente.includes(a.p.ticker))
+      || Number(z.desconto < 0) - Number(a.desconto < 0) || a.desconto - z.desconto || (a.p.var_dia ?? 0) - (z.p.var_dia ?? 0));
+  };
+  const rv = ret.blocos.filter(b => b.id !== 'caixa');
+  const ordemBlocos = [
+    ...rv.filter(b => b.status === 'abaixo').sort((a, z) => z.distancia_pp - a.distancia_pp),
+    ...rv.filter(b => b.status === 'no_alvo').sort((a, z) => z.distancia_pp - a.distancia_pp),
+    ...rv.filter(b => b.status === 'congelado').sort((a, z) => a.peso - z.peso),
+  ];
+  const out: Omit<LugarFila, 'posicao'>[] = [];
+  const congelados: Omit<LugarFila, 'posicao'>[] = [];
+  for (const b of ordemBlocos) for (const { p, desconto, fomo } of intra(b)) {
+    const pp = b.distancia_pp.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+    const dTxt = `${desconto < 0 ? '' : '+'}${desconto.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}% vs PM${fomo ? ` · alta de ${p.var_dia?.toLocaleString('pt-BR')}% hoje (anti-FOMO)` : ''}`;
+    if (m.congelados.includes(p.ticker)) { congelados.push({ ticker: p.ticker, bloco: b.id, grupo: 'ativo_congelado', motivo: 'ativo congelado: sem aporte, sem venda' }); continue; }
+    if (b.status === 'congelado') { congelados.push({ ticker: p.ticker, bloco: b.id, grupo: 'bloco_congelado', motivo: `${nome(b.id)} em ${b.peso.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}% (teto ${b.teto}%): sem aporte; proventos vão para a fila` }); continue; }
+    out.push({ ticker: p.ticker, bloco: b.id, grupo: b.status === 'no_alvo' ? 'no_alvo' : 'fila',
+      motivo: `${nome(b.id)} ${b.status === 'no_alvo' ? (b.peso > b.alvo ? `acima do alvo (${b.peso.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%), abaixo do teto` : 'no alvo') : `${pp} pp abaixo do alvo`} · ${dTxt}` });
+  }
+  // o destino real da ordem (primeiro que cabe no orçamento) vai na frente
+  const alvo = ordem?.compra?.ticker;
+  if (alvo) {
+    const i = out.findIndex(x => x.ticker === alvo);
+    if (i >= 0) { const [x] = out.splice(i, 1); out.unshift({ ...x, grupo: 'proxima', motivo: `próxima compra: ${ordem!.compra!.qtd} cotas (${ordem!.compra!.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}) · ${ordem!.compra!.motivo}` }); }
+  }
+  return [...out, ...congelados].map((x, i) => ({ ...x, posicao: i + 1 }));
+}

@@ -1,4 +1,4 @@
-import { MATRIZ_PADRAO, matrizDe, blocoDe, retratoMatriz, ordemAporte, radarEscala, BLOCOS_DIVIDENDO, type Matriz } from './matriz.ts';
+import { MATRIZ_PADRAO, matrizDe, blocoDe, retratoMatriz, ordemAporte, radarEscala, filaCompleta, BLOCOS_DIVIDENDO, type Matriz } from './matriz.ts';
 // INSA Command · motor da carteira
 // Funções puras: recebem o livro-razão e devolvem o estado derivado.
 // Nada aqui faz I/O, por isso é testável e roda igual no servidor e nos testes.
@@ -263,6 +263,7 @@ export function buildState(input: {
     : `Sem cotação para ${semCot.join(', ')}: valor pelo preço médio.` });
   const posM = linhas.map(l => ({ ticker: l.ticker, valor: l.valor, preco: l.preco, preco_medio: l.preco_medio, var_dia: l.var_dia, tipo: l.tipo, setor: l.setor, qtd: l.qtd }));
   const matriz = retratoMatriz(posM, caixa, rf, MZ);
+  const ordemMensal = ordemAporte(posM, caixa, rf, input.aporte_mensal || 0, MZ, precos);
   if (!matriz.caixa_ok) alertas.push({ nivel: 'critico', texto: `Caixa/RF em ${matriz.caixa_pct.toLocaleString('pt-BR')}% do patrimônio (mínimo 15%): trava de caixa ativa — 50% de todo aporte vai para renda fixa.` });
   for (const b of matriz.blocos) if (b.status === 'congelado') alertas.push({ nivel: 'atencao', texto: `${b.nome} em ${b.peso.toLocaleString('pt-BR')}% (teto ${b.teto}%): congelado para aportes; seus proventos vão para blocos abaixo do alvo.` });
   if (linhas.some(l => l.pm_estimado)) alertas.push({ nivel: 'info', texto: 'Há preços médios estimados (importação). Corrija com as notas de corretagem para precisão total.' });
@@ -308,7 +309,8 @@ export function buildState(input: {
     calendario: porMes,
     matriz: { ...matriz, regras: MZ },
     plano: ordemAporte(posM, caixa, rf, 0, MZ, precos),
-    ordem_mensal: ordemAporte(posM, caixa, rf, input.aporte_mensal || 0, MZ, precos),
+    ordem_mensal: ordemMensal,
+    fila_compra: filaCompleta(posM, caixa, rf, MZ, ordemMensal, precos),
     radar: radarEscala(rendaRef, MZ, input.aporte_mensal, investido ? rendaEstMes * 12 / investido * 100 : 0),
     projecao: projecao(patrimonio, input.aporte_mensal, MZ.marcos),
     alertas,

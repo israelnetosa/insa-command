@@ -16,6 +16,11 @@ Centro de comando **privado** da carteira INSA Dividend Army. É a sucessora do 
 | Peso do app | 412 KB de JS | 35 KB (12 KB comprimido) |
 | Hospedagem | Presa ao Manus | Sua conta Cloudflare (plano gratuito) |
 
+## Novidades da 2.10 · Pelotões em ordem de compra
+
+- A lista "Todos os pelotões" segue a ordem de compra teórica da matriz 5x20 (`fila_compra` no estado): 1º a próxima compra da ordem do aporte mensal; depois a fila (bloco mais abaixo do alvo; dentro dele, abaixo do PM primeiro e alta >2% no dia para trás); depois os que aguardam (bloco no alvo ou acima dele, abaixo do teto); por último os de blocos acima do teto, que não recebem aporte.
+- Cada pelotão mostra o número na fila, o selo (PRÓXIMA COMPRA, NA FILA, AGUARDA, BLOCO CONGELADO) e o motivo. Recalcula a cada cotação.
+
 ## Novidades da 2.9 · Matriz 5x20 e as 6 regras invioláveis
 
 - **Nova identidade do Manuel:** cérebro quantitativo e auditor de risco. Missão: R$ 20.000/mês em proventos sustentáveis (patrimônio alvo R$ 2.400.000 a DY de 10% a.a.). Direto, numérico, sem floreios.

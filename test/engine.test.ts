@@ -176,3 +176,15 @@ test('razão: aplicação e resgate de renda fixa movem o caixa', () => {
   ] as any);
   assert.equal(caixa, 500); assert.equal(rf, 505);
 });
+
+test('fila completa: próxima compra primeiro, congelados por último, todos os ativos presentes', async () => {
+  const { filaCompleta } = await import('../src/matriz.ts');
+  const m = { ...MZ, congelados: [] };
+  const o = ordemAporte(REAL, 10.1, 387.91, 500, m);
+  const f = filaCompleta(REAL, 10.1, 387.91, m, o);
+  assert.equal(f.length, REAL.length);
+  assert.equal(f[0].ticker, o.compra!.ticker); assert.equal(f[0].grupo, 'proxima');
+  const ult = f.findIndex(x => x.grupo === 'bloco_congelado');
+  assert.ok(ult > 0 && f.slice(ult).every(x => x.grupo.endsWith('congelado')));
+  assert.deepEqual(f.map(x => x.posicao), REAL.map((_, i) => i + 1));
+});
