@@ -19,13 +19,13 @@ const corDe = (p) => COR[p.tipo] ?? '#cfeeff';
 const TAU = Math.PI * 2;
 
 export function filaFoco(s) {
+  // mesma ordem da fila de compra da matriz 5x20; alvo = alvo individual do ativo (FIIs 10% + 10%)
   const P = s.posicoes || [];
-  const fase = (s.fases || []).find(f => f.id === s.missao?.fase?.id);
-  const total = (s.totais.investido || 0) + (s.totais.caixa || 0);
-  const atraso = (t) => ((fase?.pesos?.[t] ?? 0) / 100) * total - (P.find(p => p.ticker === t)?.valor ?? 0);
-  const plano = (s.plano?.compras || []).map(c => c.ticker);
-  const resto = P.map(p => p.ticker).filter(t => !plano.includes(t)).sort((a, b) => atraso(b) - atraso(a));
-  return [...new Set([...plano, ...resto])].map(t => ({ ticker: t, atraso: atraso(t), alvo: fase?.pesos?.[t] ?? 0, compra: (s.plano?.compras || []).find(c => c.ticker === t) }));
+  const lugar = new Map((s.fila_compra || []).map(f => [f.ticker, f.posicao]));
+  const oc = s.ordem_mensal?.compra;
+  const ord = [...P].sort((a, b) => (lugar.get(a.ticker) ?? 99) - (lugar.get(b.ticker) ?? 99));
+  return ord.map(p => ({ ticker: p.ticker, atraso: (p.alvo_individual ?? 0) - (p.peso_patrimonio ?? p.peso ?? 0), alvo: p.alvo_individual ?? 0,
+    congelado: p.bloco_status === 'congelado', compra: oc && oc.ticker === p.ticker ? oc : null }));
 }
 
 /** Nível do aparelho: 2 = forte (resolução nativa, 60 q/s), 1 = médio, 0 = leve. */
@@ -141,7 +141,7 @@ export function ligarToro(cv, s, { mira, rotulo, aoSelecionar } = {}) {
     const f = fila.find(x => x.ticker === ticker) ?? { ticker, alvo: 0 };
     const p = (s.posicoes || []).find(x => x.ticker === ticker);
     fioAlvo = fios.find(x => x.t === ticker && !x.ponta) ?? null;
-    if (rotulo) rotulo.innerHTML = `<b>${origem === 'dono' ? 'SELECIONADO' : f.compra ? 'CANDIDATO' : 'OBSERVANDO'}</b> ${esc(ticker)} · ${p ? brl(p.preco) : '—'} · zona ${esc(p?.zona ?? '—')} · ${f.compra ? `plano ${f.compra.qtd} × ${brl(f.compra.preco)}` : `peso ${nf(p?.peso ?? 0, 1)}% / alvo ${nf(f.alvo, 0)}%`}`;
+    if (rotulo) rotulo.innerHTML = `<b>${origem === 'dono' ? 'SELECIONADO' : f.compra ? 'CANDIDATO' : 'OBSERVANDO'}</b> ${esc(ticker)} · ${p ? brl(p.preco) : '—'} · ${f.congelado ? 'bloco congelado' : `zona ${esc(p?.zona ?? '—')}`} · ${f.compra ? `plano ${f.compra.qtd} × ${brl(f.compra.preco)}` : `peso ${nf(p?.peso_patrimonio ?? p?.peso ?? 0, 1)}% / alvo ${nf(f.alvo, 1)}%`}`;
   };
   const focar = () => { if (sel && performance.now() < selAte) return; sel = null; const f = fila[fi++ % Math.max(1, fila.length)]; if (f) mostrar(f.ticker); pedir(); };
   focar();

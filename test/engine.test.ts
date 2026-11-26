@@ -203,3 +203,12 @@ test('renda fixa rende líquido de IR; caixa parado rende zero; total entra no m
   assert.equal(st.totais.renda_passiva_total, 9.25);   // os 1.000 no caixa não rendem
   assert.equal(st.missao.falta_marco, 90.75);
 });
+
+test('alvos individuais: MXRF11 e BTLG11 com 10% cada; demais blocos divididos entre os ativos', async () => {
+  const { alvosIndividuais } = await import('../src/matriz.ts');
+  const a = alvosIndividuais(REAL, MZ);
+  assert.equal(a.MXRF11.alvo, 10); assert.equal(a.BTLG11.alvo, 10);
+  assert.equal(a.ITUB4.alvo, 10); assert.equal(a.BBAS3.alvo, 10);       // bancos: 20% ÷ 2
+  assert.equal(a.CMIG4.alvo, 6.67);                                     // energia: 20% ÷ 3
+  assert.equal(a.WEGE3.alvo, 5);                                        // crescimento: 20% ÷ 4
+});

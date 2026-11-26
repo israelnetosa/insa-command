@@ -243,3 +243,26 @@ export function rendaMensalRF(saldoRf: number, m: Matriz): number {
   const liq = (m.taxa_rf_anual / 100) * (1 - m.ir_rf / 100);
   return saldoRf > 0 ? r2(saldoRf * (Math.pow(1 + liq, 1 / 12) - 1)) : 0;
 }
+
+/** Alvo individual (% do patrimônio): FIIs 10% tijolo + 10% papel, divididos entre os ativos de cada lado;
+ *  nos outros blocos, o alvo do bloco dividido igualmente entre os ativos que estão na carteira. */
+export function alvosIndividuais(pos: PosicaoM[], m: Matriz): Record<string, { alvo: number; bloco: BlocoId }> {
+  const out: Record<string, { alvo: number; bloco: BlocoId }> = {};
+  const vivos = pos.filter(p => p.qtd > 0);
+  for (const b of m.blocos) {
+    if (b.id === 'caixa') continue;
+    const membros = vivos.filter(p => blocoDe(p.ticker, m, p) === b.id).map(p => p.ticker);
+    if (!membros.length) continue;
+    if (b.id === 'fiis') {
+      const tij = membros.filter(t => m.fii_tijolo.includes(t)), pap = membros.filter(t => m.fii_papel.includes(t));
+      const outros = membros.filter(t => !tij.includes(t) && !pap.includes(t));
+      const lados = [[tij, b.alvo / 2], [pap, b.alvo / 2]] as [string[], number][];
+      // FII sem lado definido divide com o lado vazio (ou com o tijolo, se os dois existirem)
+      if (outros.length) { if (!pap.length) lados[1][0] = outros; else if (!tij.length) lados[0][0] = outros; else tij.push(...outros); }
+      for (const [ts, a] of lados) for (const t of ts) out[t] = { alvo: r2(a / ts.length), bloco: b.id };
+      continue;
+    }
+    for (const t of membros) out[t] = { alvo: r2(b.alvo / membros.length), bloco: b.id };
+  }
+  return out;
+}

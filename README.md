@@ -18,6 +18,7 @@ Centro de comando **privado** da carteira INSA Dividend Army. É a sucessora do 
 
 ## Novidades da 2.11 · Renda passiva total (RV + RF)
 
+- **2.11.1:** a quebra RV / RF (líq.) fica em duas linhas, sem cortes. Cada posição tem alvo individual da matriz (FIIs: 10% tijolo + 10% papel; nos outros blocos, o alvo do bloco dividido entre os ativos da carteira), usado no banner do núcleo, que mostra "bloco congelado" quando o bloco passou do teto.
 - Rendimento mensal líquido da renda fixa: `saldo_rf × ((1 + taxa × (1 − IR))^(1/12) − 1)`, com taxa CDI/Selic configurável (`settings.matriz.taxa_rf_anual`, padrão 13,75% a.a.) e IR de 15% (`ir_rf`). Só o saldo registrado como renda fixa rende; caixa parado rende R$ 0.
 - Cockpit: "Renda mensal" mostra a renda passiva total, a quebra "RV · RF (líq.)" e o DY consolidado sobre RV + RF. "Próximo marco" e o Radar de Escala passam a usar RV + RF, então cada aplicação em renda fixa avança a barra na hora.
 

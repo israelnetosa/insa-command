@@ -1,4 +1,4 @@
-import { MATRIZ_PADRAO, matrizDe, blocoDe, retratoMatriz, ordemAporte, radarEscala, filaCompleta, rendaMensalRF, BLOCOS_DIVIDENDO, type Matriz } from './matriz.ts';
+import { MATRIZ_PADRAO, matrizDe, blocoDe, retratoMatriz, ordemAporte, radarEscala, filaCompleta, rendaMensalRF, alvosIndividuais, BLOCOS_DIVIDENDO, type Matriz } from './matriz.ts';
 // INSA Command · motor da carteira
 // Funções puras: recebem o livro-razão e devolvem o estado derivado.
 // Nada aqui faz I/O, por isso é testável e roda igual no servidor e nos testes.
@@ -267,6 +267,12 @@ export function buildState(input: {
     : `Sem cotação para ${semCot.join(', ')}: valor pelo preço médio.` });
   const posM = linhas.map(l => ({ ticker: l.ticker, valor: l.valor, preco: l.preco, preco_medio: l.preco_medio, var_dia: l.var_dia, tipo: l.tipo, setor: l.setor, qtd: l.qtd }));
   const matriz = retratoMatriz(posM, caixa, rf, MZ);
+  const alvosInd = alvosIndividuais(posM, MZ);
+  for (const l of linhas as any[]) {
+    const ai = alvosInd[l.ticker]; const b = matriz.blocos.find(x => x.id === ai?.bloco);
+    l.alvo_individual = ai?.alvo ?? 0; l.bloco = ai?.bloco ?? null; l.bloco_status = b?.status ?? null;
+    l.peso_patrimonio = patrimonio ? r2(l.valor / patrimonio * 100) : 0;
+  }
   const ordemMensal = ordemAporte(posM, caixa, rf, input.aporte_mensal || 0, MZ, precos);
   if (!matriz.caixa_ok) alertas.push({ nivel: 'critico', texto: `Caixa/RF em ${matriz.caixa_pct.toLocaleString('pt-BR')}% do patrimônio (mínimo 15%): trava de caixa ativa — 50% de todo aporte vai para renda fixa.` });
   for (const b of matriz.blocos) if (b.status === 'congelado') alertas.push({ nivel: 'atencao', texto: `${b.nome} em ${b.peso.toLocaleString('pt-BR')}% (teto ${b.teto}%): congelado para aportes; seus proventos vão para blocos abaixo do alvo.` });
