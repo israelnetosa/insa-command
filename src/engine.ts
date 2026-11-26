@@ -1,4 +1,4 @@
-import { MATRIZ_PADRAO, matrizDe, blocoDe, retratoMatriz, ordemAporte, radarEscala, filaCompleta, BLOCOS_DIVIDENDO, type Matriz } from './matriz.ts';
+import { MATRIZ_PADRAO, matrizDe, blocoDe, retratoMatriz, ordemAporte, radarEscala, filaCompleta, rendaMensalRF, BLOCOS_DIVIDENDO, type Matriz } from './matriz.ts';
 // INSA Command · motor da carteira
 // Funções puras: recebem o livro-razão e devolvem o estado derivado.
 // Nada aqui faz I/O, por isso é testável e roda igual no servidor e nos testes.
@@ -244,7 +244,11 @@ export function buildState(input: {
   });
 
   // Marco: usamos a renda estimada até haver 12 meses de recebimentos reais
-  const rendaRef = recebida12 > 0 && proventos.some(p => p.data <= corte) ? recebida12 / 12 : rendaEstMes;
+  const rendaRefRV = recebida12 > 0 && proventos.some(p => p.data <= corte) ? recebida12 / 12 : rendaEstMes;
+  // renda passiva total = RV + rendimento líquido da renda fixa (caixa parado rende zero)
+  const rendaRF = rendaMensalRF(rf, matrizDe(input.matriz));
+  const rendaRef = rendaRefRV + rendaRF;
+  const rendaTotal = rendaEstMes + rendaRF;
   const MZ = matrizDe(input.matriz);
   const proxMarco = MZ.marcos.find(m => m > rendaRef) ?? MZ.meta_mensal;
   const maior = linhas[0];
@@ -291,9 +295,12 @@ export function buildState(input: {
       resultado_dia: r2(linhas.reduce((s, l) => s + l.var_dia_valor, 0)),
       n_ativos: linhas.length,
       renda_mes_estimada: r2(rendaEstMes),
+      renda_mes_rf: rendaRF, renda_passiva_total: r2(rendaTotal),
+      taxa_rf_liquida: r2(matrizDe(input.matriz).taxa_rf_anual * (1 - matrizDe(input.matriz).ir_rf / 100)),
       renda_12m_recebida: r2(recebida12),
       renda_referencia: r2(rendaRef),
       dy_carteira: investido ? r2(rendaEstMes * 12 / investido * 100) : 0,
+      dy_consolidado: investido + rf ? r2(rendaTotal * 12 / (investido + rf) * 100) : 0,
     },
     missao: {
       meta_mensal: MZ.meta_mensal, patrimonio_alvo: r2(MZ.meta_mensal * 12 / (MZ.dy_alvo / 100)), dy_alvo: MZ.dy_alvo,

@@ -188,3 +188,18 @@ test('fila completa: próxima compra primeiro, congelados por último, todos os 
   assert.ok(ult > 0 && f.slice(ult).every(x => x.grupo.endsWith('congelado')));
   assert.deepEqual(f.map(x => x.posicao), REAL.map((_, i) => i + 1));
 });
+
+test('renda fixa rende líquido de IR; caixa parado rende zero; total entra no marco', async () => {
+  const { rendaMensalRF } = await import('../src/matriz.ts');
+  const r = rendaMensalRF(1000, MZ);   // 13,75% × 0,85 = 11,6875% a.a. → 0,9254% a.m.
+  assert.ok(Math.abs(r - 9.25) < 0.01, String(r));
+  assert.equal(rendaMensalRF(0, MZ), 0);
+  const st = buildState({ movements: [
+      { data: '2026-01-01', tipo: 'aporte', valor: 2000 },
+      { data: '2026-01-02', tipo: 'aplicacao_rf', valor: 1000 },
+    ] as any, assets: [], quotes: [], fases: [], aporte_mensal: 0,
+    missao: { meta_mensal: 20000, dy_missao: 10, marcos: [100], teto_concentracao: 25 } });
+  assert.equal(st.totais.renda_mes_rf, 9.25);
+  assert.equal(st.totais.renda_passiva_total, 9.25);   // os 1.000 no caixa não rendem
+  assert.equal(st.missao.falta_marco, 90.75);
+});

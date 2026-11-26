@@ -293,11 +293,12 @@ function cockpit() {
           <div class="faint"><a href="#/radar">Abrir radar ao vivo</a></div></div>
         <div class="card kpi leitura"><div class="label">Não realizado</div><div class="val num ${sign(t.resultado)}">${brl(t.resultado)}</div>
           <div class="faint">contra o preço médio${t.realizado ? ` · realizado ${brl(t.realizado)}` : ''}</div></div>
-        <div class="card kpi leitura"><div class="label">Renda mensal</div><div class="val num pos">${brl(t.renda_mes_estimada)}</div>
-          <div class="faint">estimada · DY ${pct(t.dy_carteira, 2)} · recebido em 12 meses ${brl(t.renda_12m_recebida)}</div></div>
+        <div class="card kpi leitura"><div class="label">Renda mensal · passiva total</div><div class="val num pos">${brl(t.renda_passiva_total ?? t.renda_mes_estimada)}</div>
+          <div class="kpi-quebra">RV: ${brl(t.renda_mes_estimada)} · RF (líq.): ${brl(t.renda_mes_rf || 0)}</div>
+          <div class="faint">DY consolidado ${pct(t.dy_consolidado ?? t.dy_carteira, 2)} a.a. sobre RV + RF · RF a ${pct(t.taxa_rf_liquida || 0, 2)} líq. · recebido em 12 meses ${brl(t.renda_12m_recebida)}</div></div>
         <div class="card kpi leitura"><div class="label">Próximo marco</div><div class="val num">${brl(m.falta_marco)}<small>/mês</small></div>
           <div class="bar"><i style="width:${Math.min(100, m.progresso_marco)}%"></i></div>
-          <div class="faint">faltam para ${brl(m.proximo_marco, 0)}/mês · meta ${brl(m.meta_mensal, 0)}</div></div>
+          <div class="faint">faltam para ${brl(m.proximo_marco, 0)}/mês · ${nf(m.progresso_marco, 1)}% com RV + RF · meta ${brl(m.meta_mensal, 0)}</div></div>
       </div>
     </div>
     <section class="grid g2">

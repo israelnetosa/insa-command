@@ -16,6 +16,8 @@ export interface Matriz {
   pulverizacao_ate: number;                     // R$: abaixo disto, nenhum ticker novo e no máximo 2 destinos
   congelados: string[];                         // ativos individuais sem aporte (sem venda)
   marcos: number[]; meta_mensal: number; dy_alvo: number;
+  taxa_rf_anual: number;   // CDI/Selic bruta (% a.a.) para estimar o rendimento da renda fixa
+  ir_rf: number;           // IR sobre o rendimento (%)
 }
 
 export const MATRIZ_PADRAO: Matriz = {
@@ -30,6 +32,7 @@ export const MATRIZ_PADRAO: Matriz = {
   trava_caixa_aporte: 50, anti_fomo_var: 2, pulverizacao_ate: 25000,
   congelados: [],   // descongelados em 26/11/2026: BBAS3 e BITC11 voltam à fila dos seus blocos
   marcos: [100, 500, 1000, 5000, 20000], meta_mensal: 20000, dy_alvo: 10,
+  taxa_rf_anual: 13.75, ir_rf: 15,
 };
 
 /** Magic Number só vale para FIIs e pagadores maduros (bancos, energia). Nunca para crescimento. */
@@ -233,4 +236,10 @@ export function filaCompleta(pos: PosicaoM[], caixa: number, rf: number, m: Matr
     if (i >= 0) { const [x] = out.splice(i, 1); out.unshift({ ...x, grupo: 'proxima', motivo: `próxima compra: ${ordem!.compra!.qtd} cotas (${ordem!.compra!.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}) · ${ordem!.compra!.motivo}` }); }
   }
   return [...out, ...congelados].map((x, i) => ({ ...x, posicao: i + 1 }));
+}
+
+/** Rendimento mensal líquido da renda fixa: saldo × ((1 + taxa bruta × (1 − IR))^(1/12) − 1). Caixa parado rende 0. */
+export function rendaMensalRF(saldoRf: number, m: Matriz): number {
+  const liq = (m.taxa_rf_anual / 100) * (1 - m.ir_rf / 100);
+  return saldoRf > 0 ? r2(saldoRf * (Math.pow(1 + liq, 1 / 12) - 1)) : 0;
 }

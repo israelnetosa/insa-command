@@ -16,6 +16,11 @@ Centro de comando **privado** da carteira INSA Dividend Army. É a sucessora do 
 | Peso do app | 412 KB de JS | 35 KB (12 KB comprimido) |
 | Hospedagem | Presa ao Manus | Sua conta Cloudflare (plano gratuito) |
 
+## Novidades da 2.11 · Renda passiva total (RV + RF)
+
+- Rendimento mensal líquido da renda fixa: `saldo_rf × ((1 + taxa × (1 − IR))^(1/12) − 1)`, com taxa CDI/Selic configurável (`settings.matriz.taxa_rf_anual`, padrão 13,75% a.a.) e IR de 15% (`ir_rf`). Só o saldo registrado como renda fixa rende; caixa parado rende R$ 0.
+- Cockpit: "Renda mensal" mostra a renda passiva total, a quebra "RV · RF (líq.)" e o DY consolidado sobre RV + RF. "Próximo marco" e o Radar de Escala passam a usar RV + RF, então cada aplicação em renda fixa avança a barra na hora.
+
 ## Novidades da 2.10 · Pelotões em ordem de compra
 
 - A lista "Todos os pelotões" segue a ordem de compra teórica da matriz 5x20 (`fila_compra` no estado): 1º a próxima compra da ordem do aporte mensal; depois a fila (bloco mais abaixo do alvo; dentro dele, abaixo do PM primeiro e alta >2% no dia para trás); depois os que aguardam (bloco no alvo ou acima dele, abaixo do teto); por último os de blocos acima do teto, que não recebem aporte.

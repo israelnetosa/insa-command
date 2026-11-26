@@ -15,7 +15,7 @@ export function relatorioNucleo(s: any, ordem: any, aporte: number, opts: { rend
     `- Patrimônio total: ${brl(tot.patrimonio)} (ativos ${brl(tot.investido)} · caixa ${brl(tot.caixa)} · renda fixa ${brl(tot.renda_fixa ?? 0)}).`,
     `- Caixa/RF: ${num(caixaPct)}% — ${verde ? 'VERDE (≥ 15%)' : 'VERMELHO (< 15%)'}.`,
     `- Resultado do dia: ${sinal(tot.resultado_dia)}.`,
-    `- Renda mensal estimada: ${brl(tot.renda_mes_estimada)} (DY ${num(tot.dy_carteira)}%).`,
+    `- Renda passiva mensal: ${brl(tot.renda_passiva_total ?? tot.renda_mes_estimada)} (RV ${brl(tot.renda_mes_estimada)} · RF líq. ${brl(tot.renda_mes_rf ?? 0)}) · DY consolidado ${num(tot.dy_consolidado ?? tot.dy_carteira)}%.`,
     `- Matriz: ${blocos.map(b => `${b.nome.split(' ')[0]} ${num(b.peso, 1)}%`).join(' · ')}.`,
   ];
 
@@ -47,7 +47,7 @@ export function relatorioNucleo(s: any, ordem: any, aporte: number, opts: { rend
   const ref = Number(tot.renda_referencia ?? tot.renda_mes_estimada) || 0;
   const prox = radar.find(r => !r.atingido);
   const escala = [
-    `- Renda de referência: ${brl(ref)}/mês.`,
+    `- Renda de referência (RV + RF líquida): ${brl(ref)}/mês.`,
     ...radar.map(r => `- ${brl(r.marco)}/mês: ${r.atingido ? 'ATINGIDO' : `${num(r.progresso, 1)}% · faltam ${brl(r.falta)}/mês${r.capital_extra ? ` (~${brl(r.capital_extra)} a mais de patrimônio ao DY atual)` : ''}`}`),
     s.missao?.patrimonio_alvo ? `- Patrimônio alvo ${brl(s.missao.patrimonio_alvo)} (DY ${num(s.missao.dy_alvo)}%): ${num(tot.patrimonio / s.missao.patrimonio_alvo * 100, 2)}% percorrido.` : '',
     prox && opts.rendaExtra ? `- Este aporte encurta o próximo marco em ${brl(opts.rendaExtra)}/mês.` : '',

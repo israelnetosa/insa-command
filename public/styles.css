@@ -653,3 +653,4 @@ html.com-rosto body { overflow: hidden; }
 .ord-txt small { font: 400 11px var(--mono); color: var(--muted, #9fc0cf); }
 .ord-val { flex-shrink: 0; white-space: nowrap; font: 700 15px var(--head); text-align: right; }
 .ord-just { margin-top: 8px; }
+.kpi-quebra { font: 600 12px var(--mono); color: #d8fbff; letter-spacing: .04em; margin: 2px 0 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
