@@ -646,3 +646,10 @@ html.com-rosto body { overflow: hidden; }
 .fila-motivo.fs-proxima { color: #5ff5b8; }
 .pc-proxima { border-color: rgba(52,245,164,.55) !important; box-shadow: 0 0 22px rgba(52,245,164,.12); }
 .pc-bloco_congelado, .pc-ativo_congelado { opacity: .72; }
+/* ordem de execução: valor sempre inteiro à direita, mesmo em telas estreitas */
+.ord-lista { display: grid; gap: 10px; margin-top: 10px; }
+.ord-linha { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding-bottom: 8px; border-bottom: 1px solid rgba(72,229,255,.12); }
+.ord-txt { min-width: 0; flex: 1 1 auto; display: grid; gap: 2px; overflow-wrap: anywhere; }
+.ord-txt small { font: 400 11px var(--mono); color: var(--muted, #9fc0cf); }
+.ord-val { flex-shrink: 0; white-space: nowrap; font: 700 15px var(--head); text-align: right; }
+.ord-just { margin-top: 8px; }

@@ -217,16 +217,23 @@ function cardMatriz(s) {
 function cardOrdem(s) {
   const o = s.ordem_mensal || s.plano || {};
   const ap = Number(s.aporte_mensal) || 0;
+  // valor à direita nunca encolhe nem quebra; o subtítulo desce para a linha de baixo
+  const linha = (rotulo, sub, valor) => `<div class="ord-linha"><div class="ord-txt">${rotulo}${sub ? `<small>${sub}</small>` : ''}</div><b class="ord-val">${brl(valor)}</b></div>`;
   const linhas = [
-    o.renda_fixa > 0 ? `<tr><td>Renda fixa</td><td class="faint">liquidez diária${o.trava_caixa ? ' · trava' : ''}</td><td>${brl(o.renda_fixa)}</td></tr>` : '',
-    o.compra ? `<tr><td><span class="tk">${esc(o.compra.ticker)}</span></td><td>${o.compra.qtd} × ${brl(o.compra.preco)}</td><td>${brl(o.compra.valor)}</td></tr>` : '',
+    o.renda_fixa > 0 ? linha('Renda fixa', `liquidez diária · Selic/CDI${o.trava_caixa ? ' · trava de caixa' : ''}`, o.renda_fixa) : '',
+    o.compra ? linha(`<span class="tk">${esc(o.compra.ticker)}</span>`, `${o.compra.qtd} × ${brl(o.compra.preco)}`, o.compra.valor) : '',
+  ].join('');
+  // justificativa: o motivo do ativo escolhido + quem do mesmo bloco ficou de fora pelo anti-FOMO
+  const fora = o.compra ? ((o.fila || []).find(f => f.bloco === o.compra.bloco)?.candidatos || []).filter(c => c.fomo && c.ticker !== o.compra.ticker).map(c => c.ticker) : [];
+  const just = o.compra ? `${o.compra.motivo}${fora.length ? ` · ${fora.join(', ')} fora por anti-FOMO` : ''}` : '';
+  const botoes = [
+    o.compra ? `<a class="btn ghost" href="#/registrar?tipo=compra&ticker=${encodeURIComponent(o.compra.ticker)}&qtd=${o.compra.qtd}&preco=${o.compra.preco}">Registrar compra executada</a>` : '',
+    o.renda_fixa > 0 ? `<a class="btn ghost" href="#/registrar?tipo=aplicacao_rf&valor=${o.renda_fixa}">Registrar aplicação RF</a>` : '',
   ].join('');
   return `<div class="card"><div class="eyebrow">Ordem de execução · aporte de ${brl(ap)}</div>
-    ${linhas ? `<table style="margin-top:8px"><tbody>${linhas}</tbody></table>` : `<p class="muted">Sem destino: defina o aporte mensal nos Ajustes.</p>`}
-    ${o.compra ? `<p class="faint">${esc(o.compra.motivo)}.</p>` : ''}
-    ${(o.bloqueios || []).length ? `<ul class="mz-bloq">${o.bloqueios.map(b => `<li>${esc(b)}</li>`).join('')}</ul>` : ''}
-    <p class="faint">Máximo 2 destinos (Caixa + 1 ativo) até R$ 25 mil. Nunca vende. Ordem limitada.</p>
-    ${o.compra ? `<div class="actions"><a class="btn ghost" href="#/registrar?tipo=compra&ticker=${encodeURIComponent(o.compra.ticker)}&qtd=${o.compra.qtd}&preco=${o.compra.preco}">Registrar compra executada</a>${o.renda_fixa > 0 ? `<a class="btn ghost" href="#/registrar?tipo=aplicacao_rf&valor=${o.renda_fixa}">Registrar aplicação RF</a>` : ''}</div>` : ''}
+    ${linhas ? `<div class="ord-lista">${linhas}</div>` : `<p class="muted">Sem destino: defina o aporte mensal nos Ajustes.</p>`}
+    ${just ? `<p class="faint ord-just">${esc(just)}.</p>` : ''}
+    ${botoes ? `<div class="actions">${botoes}</div>` : ''}
   </div>`;
 }
 function leituraPonte(s) {
