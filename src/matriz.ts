@@ -28,7 +28,7 @@ export const MATRIZ_PADRAO: Matriz = {
   ],
   fii_tijolo: ['BTLG11'], fii_papel: ['MXRF11'],
   trava_caixa_aporte: 50, anti_fomo_var: 2, pulverizacao_ate: 25000,
-  congelados: ['BBAS3', 'BITC11'],
+  congelados: [],   // descongelados em 26/11/2026: BBAS3 e BITC11 voltam à fila dos seus blocos
   marcos: [100, 500, 1000, 5000, 20000], meta_mensal: 20000, dy_alvo: 10,
 };
 

@@ -27,7 +27,7 @@ Centro de comando **privado** da carteira INSA Dividend Army. É a sucessora do 
   4. Magic Number só para FIIs, bancos e energia;
   5. anti-pulverização: abaixo de R$ 25 mil, nenhum ticker novo e no máximo 2 destinos (Caixa + 1 ativo);
   6. nunca vende para rebalancear.
-  BBAS3 e BITC11 continuam congelados individualmente.
+  Nenhum ativo congelado individualmente (BBAS3 e BITC11 descongelados na 2.9.1); só blocos acima do teto.
 - **Renda fixa no razão:** novos lançamentos "RF: aplicar" (caixa → RF), "RF: resgatar" (RF → caixa) e "RF: saldo/rendimento" (saldo já existente fora do app ou rendimento). Também por texto: "apliquei 250 no tesouro selic", "tenho 3000 em renda fixa".
 - **Relatório obrigatório** (leitura do dia e aporte): 1. Status do Núcleo · 2. Alertas de Risco · 3. Ordem de Execução · 4. Radar de Escala (R$ 100 → 500 → 1.000 → 5.000 → 20.000/mês). A saudação falada usa um resumo dele.
 - **Cockpit:** cartão da Matriz 5x20 (peso × alvo × teto por bloco) e cartão da Ordem de Execução do aporte mensal, com atalhos para registrar a compra e a aplicação em RF.

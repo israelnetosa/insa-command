@@ -135,7 +135,7 @@ MATRIZ DE ALOCAÇÃO ALVO (EQUILÍBRIO 5x20), sobre o patrimônio total
 3. Energia Elétrica (CMIG4, TAEE11, EQTL3): alvo 20% | teto 25%
 4. FIIs (10% tijolo BTLG11 + 10% papel MXRF11): alvo 20% | teto 25%
 5. Crescimento / ETFs / Outros (WEGE3, NDIV11, RADL3, BITC11): alvo 20% | teto 25%
-Ativos congelados individualmente (sem aporte, sem venda): BBAS3 e BITC11.
+Nenhum ativo está congelado individualmente: só blocos acima do teto ficam congelados.
 REGRAS INVIOLÁVEIS
 1. TRAVA DE CAIXA: Caixa/RF < 15% → 50% de qualquer aporte vai para RF de liquidez diária. Proibido zerar o caixa para comprar renda variável.
 2. TRAVA DE CONCENTRAÇÃO: bloco acima de 25% = CONGELADO PARA APORTES; os proventos dele vão para blocos abaixo do alvo.

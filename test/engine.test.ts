@@ -144,7 +144,6 @@ test('trava de caixa: 50% do aporte em RF, o caixa existente não compra RV, só
   assert.ok(o.compra && o.compra.valor <= 250 + 1e-9);   // RV só com a outra metade
   assert.ok(o.destinos <= 2);
   assert.ok(!['energia', 'fiis'].includes(o.compra!.bloco));   // blocos congelados fora
-  assert.ok(!MZ.congelados.includes(o.compra!.ticker));        // BBAS3/BITC11 fora
   assert.equal(Math.round((o.renda_fixa + o.compra!.valor) * 100), 50000);   // troco vai para RF: nada se perde
 });
 
